@@ -1,0 +1,257 @@
+//! Tipos públicos trocados entre o backend Rust e o frontend.
+//!
+//! Todos serializam em `camelCase` para ficarem idiomáticos no TypeScript.
+
+use serde::{Deserialize, Serialize};
+
+/// Resultado bruto da execução de um comando `svn`.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CommandOutput {
+    pub success: bool,
+    pub code: Option<i32>,
+    pub stdout: String,
+    pub stderr: String,
+    /// Dica amigável derivada do código de erro do SVN (E155004, E160013, ...).
+    pub hint: Option<String>,
+    /// Comando exibido para o usuário (modo "verbose"), ex.: `svn commit -m "..."`.
+    pub command: String,
+}
+
+/// Onde a working copy está apontando: trunk, branch, tag ou outro.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum BranchKind {
+    Trunk,
+    Branch,
+    Tag,
+    Other,
+}
+
+/// Uma working copy detectada em disco.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkingCopy {
+    /// Caminho absoluto da raiz da working copy.
+    pub path: String,
+    /// Nome da pasta (ex.: `sna`).
+    pub name: String,
+    /// URL completa atual (ex.: `svn+ssh://.../trunk/PROJETOS/sna`).
+    pub url: String,
+    /// URL relativa à raiz do repositório (ex.: `^/trunk/PROJETOS/sna`).
+    pub relative_url: String,
+    /// Raiz do repositório.
+    pub repo_root: String,
+    /// Revisão da working copy (texto, pode conter mixed-rev como "16297:16300M").
+    pub revision: String,
+    /// Última revisão alterada.
+    pub last_changed_rev: Option<String>,
+    pub last_changed_author: Option<String>,
+    pub last_changed_date: Option<String>,
+    /// Tipo de linha onde estamos.
+    pub kind: BranchKind,
+    /// Rótulo legível da branch (ex.: `trunk` ou `ISSUES 2026/06 - JUNHO/issue_1234`).
+    pub branch_label: String,
+    /// É a linha principal do projeto (trunk, ou o preset configurado)?
+    pub is_mainline: bool,
+    /// Quantidade de itens modificados localmente.
+    pub modified_count: u32,
+    /// Há conflitos pendentes?
+    pub has_conflicts: bool,
+    /// Chave do projeto-preset correspondente, se houver (ex.: `sna`).
+    pub project_key: Option<String>,
+    /// UUID do repositório.
+    pub uuid: Option<String>,
+}
+
+/// Estado de um arquivo/diretório no `svn status`.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StatusEntry {
+    /// Caminho absoluto.
+    pub path: String,
+    /// Caminho relativo à raiz da working copy.
+    pub rel_path: String,
+    /// Estado do conteúdo: modified, added, deleted, unversioned, missing,
+    /// conflicted, normal, replaced, ignored, external, incomplete, obstructed.
+    pub item: String,
+    /// Estado das propriedades: none, modified, conflicted.
+    pub props: String,
+    /// Foi copiado/movido?
+    pub copied: bool,
+    /// Está travado por trava de WC?
+    pub wc_locked: bool,
+    /// Tree-conflict?
+    pub tree_conflicted: bool,
+    /// Há novidade no servidor para este caminho (status -u)?
+    pub remote_modified: bool,
+    /// Item remoto (com -u): modified/added/deleted/none.
+    pub repos_item: Option<String>,
+    pub revision: Option<String>,
+    pub is_dir: bool,
+}
+
+/// Resultado do `svn status` (possivelmente com -u).
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StatusResult {
+    pub entries: Vec<StatusEntry>,
+    /// Revisão do servidor (apenas quando consultado com -u).
+    pub against_revision: Option<String>,
+    /// Quantos itens têm novidade no servidor.
+    pub incoming_count: u32,
+}
+
+/// Caminho alterado dentro de uma revisão (log -v).
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LogPath {
+    pub action: String,
+    pub path: String,
+    pub kind: Option<String>,
+    pub copyfrom_path: Option<String>,
+    pub copyfrom_rev: Option<String>,
+}
+
+/// Uma entrada do histórico (`svn log`).
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LogEntry {
+    pub revision: String,
+    pub author: Option<String>,
+    pub date: Option<String>,
+    pub message: String,
+    pub paths: Vec<LogPath>,
+}
+
+/// Entrada de listagem de repositório (`svn list`).
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ListEntry {
+    pub name: String,
+    /// `file` ou `dir`.
+    pub kind: String,
+    pub size: Option<u64>,
+    pub revision: Option<String>,
+    pub author: Option<String>,
+    pub date: Option<String>,
+}
+
+/// Uma linha de `svn blame` (autoria por linha).
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BlameLine {
+    pub line_number: u64,
+    pub revision: Option<String>,
+    pub author: Option<String>,
+    pub date: Option<String>,
+    pub content: String,
+}
+
+/// Projeto pré-configurado (preset do fluxo do usuário).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Project {
+    pub key: String,
+    pub name: String,
+    pub description: String,
+    pub url: String,
+}
+
+/// Modo de autenticação SSH para `svn+ssh`.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum SshMode {
+    /// Tenta chave; cai para senha (`$SSHPASS`) se disponível.
+    Auto,
+    /// Somente chave/agent SSH.
+    Key,
+    /// Força senha via `sshpass -e` (`$SSHPASS`).
+    Password,
+}
+
+/// Configuração persistida da aplicação.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AppConfig {
+    /// Pasta-base onde ficam as working copies.
+    pub base_dir: String,
+    /// Host SSH (ex.: `daniel.souza@172.25.136.61`).
+    pub host: String,
+    /// Raízes de repositório conhecidas (para o navegador).
+    pub repo_roots: Vec<String>,
+    /// Projetos-preset.
+    pub projects: Vec<Project>,
+    pub ssh_mode: SshMode,
+    /// Tema da UI: `dark`, `light` ou `system`.
+    pub theme: String,
+    /// Ferramenta de diff externa preferida (ex.: `meld`).
+    pub external_diff_tool: String,
+    /// Mostrar o comando svn equivalente em cada operação.
+    pub verbose: bool,
+    /// Pedir confirmação antes de operações que escrevem no servidor.
+    pub confirm_server_ops: bool,
+}
+
+impl Default for AppConfig {
+    fn default() -> Self {
+        let home = dirs::home_dir()
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or_else(|| ".".to_string());
+
+        let host = "daniel.souza@172.25.136.61".to_string();
+        let raiz_veiculo = format!("svn+ssh://{host}/usr/svn/veiculo");
+        let raiz_libs = format!("svn+ssh://{host}/usr/svn/getranlibs");
+
+        let projects = vec![
+            Project {
+                key: "sna".into(),
+                name: "SNA".into(),
+                description: "SNA — trunk".into(),
+                url: format!("{raiz_veiculo}/trunk/PROJETOS/sna"),
+            },
+            Project {
+                key: "getran".into(),
+                name: "getran 21".into(),
+                description: "getran 21 — trunk".into(),
+                url: format!("{raiz_veiculo}/trunk/PROJETOS/getran"),
+            },
+            Project {
+                key: "getran160".into(),
+                name: "getran 160".into(),
+                description: "getran 160 — branch ISSUES 2023".into(),
+                url: format!("{raiz_veiculo}/branches/ISSUES 2023/balcaodigital_dev/getran"),
+            },
+            Project {
+                key: "trrenavam".into(),
+                name: "trrenavam".into(),
+                description: "trrenavam — trunk/MODULOS".into(),
+                url: format!("{raiz_veiculo}/trunk/MODULOS/trrenavam"),
+            },
+            Project {
+                key: "sutil".into(),
+                name: "sutil 21".into(),
+                description: "sutil 21 — trunk".into(),
+                url: format!("{raiz_libs}/trunk/sutil"),
+            },
+            Project {
+                key: "sutil160".into(),
+                name: "sutil 160".into(),
+                description: "sutil 160 — branch ISSUES 2023".into(),
+                url: format!("{raiz_libs}/branches/ISSUES 2023/Sprint 01/balcao/sutil"),
+            },
+        ];
+
+        AppConfig {
+            base_dir: home,
+            host,
+            repo_roots: vec![raiz_veiculo, raiz_libs],
+            projects,
+            ssh_mode: SshMode::Auto,
+            theme: "dark".into(),
+            external_diff_tool: "meld".into(),
+            verbose: false,
+            confirm_server_ops: true,
+        }
+    }
+}
