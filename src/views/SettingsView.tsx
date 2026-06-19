@@ -115,6 +115,11 @@ export function SettingsView() {
   return (
     <div className="h-full overflow-y-auto">
       <div className="mx-auto max-w-3xl space-y-4 p-6">
+        <div>
+          <h1 className="text-lg font-semibold text-ink">Configurações</h1>
+          <p className="text-[12px] text-faint">Servidor, projetos e preferências</p>
+        </div>
+
         {/* Aparência */}
         <Section icon={<Sun className="size-4" />} title="Aparência">
           <Row label="Tema" hint="Claro, escuro ou conforme o sistema">
