@@ -5,11 +5,11 @@ import {
   GitBranch,
   History,
   Search,
+  TreePine,
   Upload,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/Button";
-import { BranchBadge } from "@/components/ui/Badge";
 import { Segmented } from "@/components/ui/Segmented";
 import { Kbd } from "@/components/ui/Kbd";
 import { useActions } from "@/hooks/useActions";
@@ -24,47 +24,50 @@ const TABS: { value: ViewId; label: string; icon: React.ReactNode }[] = [
   { value: "merge", label: "Integração", icon: <GitMerge className="size-4" /> },
 ];
 
-const TITLES: Partial<Record<ViewId, { title: string; sub: string }>> = {
-  overview: { title: "Visão geral", sub: "Todas as working copies detectadas" },
-  settings: { title: "Configurações", sub: "Servidor, projetos e preferências" },
-};
-
 export function TopBar() {
   const { view, setView, togglePalette } = useUiStore();
   const wc = useSelectedWc();
   const { update } = useActions();
 
   const isContextual = view !== "overview" && view !== "settings";
-  const title = TITLES[view];
 
   return (
     <header
       className="flex h-14 shrink-0 items-center gap-3 border-b border-line bg-panel/60 px-4"
       data-tauri-drag-region
     >
-      {/* Lado esquerdo: contexto */}
-      <div className="flex min-w-0 items-center gap-3">
-        {isContextual && wc ? (
+      {/* Lado esquerdo: contexto da working copy */}
+      <div className="flex min-w-0 items-center gap-2.5">
+        {isContextual && wc && (
           <>
+            <div
+              className={cn(
+                "flex size-8 shrink-0 items-center justify-center rounded-lg",
+                wc.kind === "trunk" ? "bg-trunk/12 text-trunk" : "bg-branch/12 text-branch",
+              )}
+            >
+              {wc.kind === "trunk" ? (
+                <TreePine className="size-4" />
+              ) : (
+                <GitBranch className="size-4" />
+              )}
+            </div>
             <div className="min-w-0">
               <div className="flex items-center gap-2">
-                <span className="truncate text-[15px] font-semibold text-ink">{wc.name}</span>
-                <span className="rounded bg-panel-2 px-1.5 py-0.5 font-mono text-[11px] text-muted">
+                <span className="truncate text-[14px] font-semibold text-ink">{wc.name}</span>
+                <span className="shrink-0 rounded bg-panel-2 px-1.5 py-0.5 font-mono text-[10px] text-muted">
                   r{wc.revision}
                 </span>
               </div>
+              <div className="truncate text-[11px] text-faint">
+                {wc.kind === "trunk" ? "linha principal" : wc.branchLabel}
+              </div>
             </div>
-            <BranchBadge kind={wc.kind} label={wc.branchLabel} className="max-w-[260px]" />
           </>
-        ) : title ? (
-          <div>
-            <div className="text-[15px] font-semibold text-ink">{title.title}</div>
-            <div className="text-[11px] text-faint">{title.sub}</div>
-          </div>
-        ) : null}
+        )}
       </div>
 
-      <div className="flex-1" data-tauri-drag-region />
+      <div className="min-w-3 flex-1" data-tauri-drag-region />
 
       {/* Abas contextuais */}
       {isContextual && wc && (
@@ -84,12 +87,7 @@ export function TopBar() {
               <ArrowDownToLine className="size-4" />
               Atualizar
             </Button>
-            <Button
-              variant="primary"
-              size="sm"
-              onClick={() => setView("changes")}
-              className={cn(wc.modifiedCount === 0 && "opacity-90")}
-            >
+            <Button variant="primary" size="sm" onClick={() => setView("changes")}>
               <Upload className="size-4" />
               Commit
               {wc.modifiedCount > 0 && (

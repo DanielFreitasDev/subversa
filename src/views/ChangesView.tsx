@@ -340,7 +340,7 @@ function Changes({ wc }: { wc: WorkingCopy }) {
 
         {/* Compositor de commit */}
         <div className="border-t border-line p-3">
-          {wc.isMainline && (
+          {wc.isMainline && entries.length > 0 && (
             <div className="mb-2 flex items-start gap-2 rounded-lg border border-warn/30 bg-warn/10 px-3 py-2 text-[11px] leading-snug text-warn">
               <ShieldAlert className="mt-0.5 size-3.5 shrink-0" />
               <span>
