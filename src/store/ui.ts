@@ -10,17 +10,29 @@ export type ViewId =
   | "merge"
   | "settings";
 
+export type DiffMode = "unified" | "split";
+
+const DIFF_MODE_KEY = "subversa.diffMode";
+
+function initialDiffMode(): DiffMode {
+  if (typeof localStorage === "undefined") return "unified";
+  return localStorage.getItem(DIFF_MODE_KEY) === "split" ? "split" : "unified";
+}
+
 interface UiState {
   view: ViewId;
   paletteOpen: boolean;
   checkoutOpen: boolean;
   createBranchOpen: boolean;
+  /** Modo do visualizador de diff, compartilhado entre Alterações e Histórico. */
+  diffMode: DiffMode;
 
   setView: (v: ViewId) => void;
   setPalette: (open: boolean) => void;
   togglePalette: () => void;
   setCheckout: (open: boolean) => void;
   setCreateBranch: (open: boolean) => void;
+  setDiffMode: (m: DiffMode) => void;
 }
 
 export const useUiStore = create<UiState>((set) => ({
@@ -28,10 +40,15 @@ export const useUiStore = create<UiState>((set) => ({
   paletteOpen: false,
   checkoutOpen: false,
   createBranchOpen: false,
+  diffMode: initialDiffMode(),
 
   setView: (view) => set({ view }),
   setPalette: (paletteOpen) => set({ paletteOpen }),
   togglePalette: () => set((s) => ({ paletteOpen: !s.paletteOpen })),
   setCheckout: (checkoutOpen) => set({ checkoutOpen }),
   setCreateBranch: (createBranchOpen) => set({ createBranchOpen }),
+  setDiffMode: (diffMode) => {
+    if (typeof localStorage !== "undefined") localStorage.setItem(DIFF_MODE_KEY, diffMode);
+    set({ diffMode });
+  },
 }));

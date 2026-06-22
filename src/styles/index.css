@@ -173,6 +173,58 @@
     border-color: color-mix(in oklab, var(--color-brand) 60%, var(--color-line));
     box-shadow: 0 0 0 3px color-mix(in oklab, var(--color-brand) 18%, transparent);
   }
+
+  /* Realce de sintaxe do diff (lowlight/highlight.js) mapeado nos tokens do tema,
+     para respeitar dark/light sem rebuild. Não importamos nenhum tema do hljs. */
+  .diff-code .hljs-comment,
+  .diff-code .hljs-quote {
+    color: var(--color-faint);
+    font-style: italic;
+  }
+  .diff-code .hljs-keyword,
+  .diff-code .hljs-selector-tag,
+  .diff-code .hljs-literal,
+  .diff-code .hljs-built_in,
+  .diff-code .hljs-name,
+  .diff-code .hljs-tag {
+    color: var(--color-brand);
+  }
+  .diff-code .hljs-string,
+  .diff-code .hljs-symbol,
+  .diff-code .hljs-bullet,
+  .diff-code .hljs-addition,
+  .diff-code .hljs-regexp {
+    color: var(--color-add);
+  }
+  .diff-code .hljs-number,
+  .diff-code .hljs-meta,
+  .diff-code .hljs-link {
+    color: var(--color-mod);
+  }
+  .diff-code .hljs-title,
+  .diff-code .hljs-section,
+  .diff-code .hljs-selector-id,
+  .diff-code .hljs-selector-class,
+  .diff-code .hljs-type,
+  .diff-code .hljs-attr,
+  .diff-code .hljs-attribute {
+    color: var(--color-info);
+  }
+  .diff-code .hljs-variable,
+  .diff-code .hljs-template-variable,
+  .diff-code .hljs-property,
+  .diff-code .hljs-params {
+    color: var(--color-new);
+  }
+  .diff-code .hljs-deletion {
+    color: var(--color-del);
+  }
+  .diff-code .hljs-emphasis {
+    font-style: italic;
+  }
+  .diff-code .hljs-strong {
+    font-weight: 600;
+  }
 }
 
 @layer utilities {

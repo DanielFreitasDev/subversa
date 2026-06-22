@@ -217,20 +217,53 @@ pub async fn get_status(
 }
 
 /// `svn diff` (contra a BASE local) de toda a WC ou de arquivos específicos.
+/// `ignore_ws` adiciona `-x -w` (ignora diferenças de espaço em branco).
 #[tauri::command]
 pub async fn get_diff(
     path: String,
     files: Option<Vec<String>>,
+    ignore_ws: bool,
     state: State<'_, AppState>,
 ) -> Result<String, String> {
     let mode = mode_of(&state);
     let mut args: Vec<String> = vec!["diff".into(), "--internal-diff".into()];
+    if ignore_ws {
+        args.push("-x".into());
+        args.push("-w".into());
+    }
     match files {
         Some(fs) if !fs.is_empty() => args.extend(fs),
         _ => args.push(path),
     }
     let refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
     run_checked(&refs, None, mode).await
+}
+
+/// Diff de uma revisão inteira (`target` = caminho da WC ou URL) ou de um único
+/// caminho (`target` = URL completa do arquivo no repositório).
+///
+/// Usa `-c REV` (equivale a `-r REV-1:REV`), que cobre o caso de borda da r1
+/// sozinho. Se a revisão não tocar o `target`, o SVN retorna vazio e a UI mostra
+/// "Sem diferenças.". `ignore_ws` adiciona `-x -w`.
+#[tauri::command]
+pub async fn diff_revision(
+    target: String,
+    revision: String,
+    ignore_ws: bool,
+    state: State<'_, AppState>,
+) -> Result<String, String> {
+    if revision.trim().is_empty() {
+        return Err("Revisão inválida.".into());
+    }
+    let mode = mode_of(&state);
+    let change = format!("-c{}", revision.trim());
+    let mut args: Vec<&str> = vec!["diff", "--internal-diff", change.as_str()];
+    if ignore_ws {
+        args.push("-x");
+        args.push("-w");
+    }
+    args.push(target.as_str());
+    run_checked(&args, None, mode).await
 }
 
 /// Histórico (`svn log -v`). `target` pode ser um caminho de WC ou uma URL.

@@ -26,8 +26,12 @@ export const getInfo = (path: string) => invoke<WorkingCopy>("get_info", { path 
 export const getStatus = (path: string, remote = false) =>
   invoke<StatusResult>("get_status", { path, remote });
 
-export const getDiff = (path: string, files?: string[]) =>
-  invoke<string>("get_diff", { path, files: files ?? null });
+export const getDiff = (path: string, files?: string[], ignoreWs = false) =>
+  invoke<string>("get_diff", { path, files: files ?? null, ignoreWs });
+
+/** Diff de uma revisão inteira (target = WC/URL) ou de um arquivo (target = URL). */
+export const diffRevision = (target: string, revision: string, ignoreWs = false) =>
+  invoke<string>("diff_revision", { target, revision, ignoreWs });
 
 export const getLog = (target: string, limit = 50, search?: string) =>
   invoke<LogEntry[]>("get_log", { target, limit, search: search ?? null });

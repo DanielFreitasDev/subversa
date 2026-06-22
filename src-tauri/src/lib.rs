@@ -32,6 +32,7 @@ pub fn run() {
             svn::commands::get_info,
             svn::commands::get_status,
             svn::commands::get_diff,
+            svn::commands::diff_revision,
             svn::commands::get_log,
             svn::commands::list_dir,
             svn::commands::cat_file,

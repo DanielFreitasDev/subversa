@@ -137,6 +137,7 @@ function Changes({ wc }: { wc: WorkingCopy }) {
   const [highlight, setHighlight] = useState<string | null>(null);
   const [diff, setDiff] = useState("");
   const [diffLoading, setDiffLoading] = useState(false);
+  const [ignoreWs, setIgnoreWs] = useState(false);
   const [message, setMessage] = useState("");
   const [committing, setCommitting] = useState(false);
   const [checkingServer, setCheckingServer] = useState(false);
@@ -166,14 +167,14 @@ function Changes({ wc }: { wc: WorkingCopy }) {
     let alive = true;
     setDiffLoading(true);
     api
-      .getDiff(wc.path, [highlight])
+      .getDiff(wc.path, [highlight], ignoreWs)
       .then((d) => alive && setDiff(d))
       .catch(() => alive && setDiff(""))
       .finally(() => alive && setDiffLoading(false));
     return () => {
       alive = false;
     };
-  }, [highlight, wc.path]);
+  }, [highlight, wc.path, ignoreWs]);
 
   const selectedEntries = entries.filter((e) => checked.has(e.path));
   const selectableEntries = entries.filter(
@@ -407,7 +408,22 @@ function Changes({ wc }: { wc: WorkingCopy }) {
               Arquivo novo (fora do SVN). Será adicionado no commit.
             </div>
           ) : (
-            <DiffViewer text={diff} />
+            <DiffViewer
+              text={diff}
+              ignoreWs={ignoreWs}
+              onToggleIgnoreWs={setIgnoreWs}
+              externalTool={tool}
+              onOpenExternal={() => api.openExternalDiff(wc.path, tool)}
+              onExpandContext={
+                highlight
+                  ? async () => {
+                      // Contexto não exibido = linhas inalteradas → vêm da BASE (svn cat).
+                      const t = await api.catFile(highlight);
+                      return { side: "old" as const, lines: t.split("\n") };
+                    }
+                  : undefined
+              }
+            />
           )}
         </div>
       </div>

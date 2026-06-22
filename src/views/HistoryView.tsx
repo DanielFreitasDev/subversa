@@ -1,14 +1,17 @@
 import { useCallback, useEffect, useState } from "react";
-import { History, RefreshCw, Search, ServerCrash } from "lucide-react";
+import { FileDiff, History, RefreshCw, Search, ServerCrash } from "lucide-react";
 
 import * as api from "@/lib/api";
+import { DiffViewer } from "@/components/diff/DiffViewer";
+import type { ContentRef } from "@/components/diff/FileBlock";
 import { Avatar } from "@/components/ui/Avatar";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Field";
 import { Loading } from "@/components/ui/Spinner";
 import { Empty } from "@/components/ui/Empty";
 import { useSelectedWc } from "@/hooks/useSelectedWc";
-import type { LogEntry, WorkingCopy } from "@/lib/types";
+import type { DiffFile } from "@/lib/diff";
+import type { LogEntry, LogPath, WorkingCopy } from "@/lib/types";
 import { actionMeta, cn, formatAbsolute, formatRelative } from "@/lib/utils";
 import { NeedWorkingCopy } from "./_shared";
 
@@ -50,54 +53,130 @@ function RevisionItem({
   );
 }
 
-function RevisionDetail({ entry }: { entry: LogEntry }) {
+function RevisionDetail({ entry, wc }: { entry: LogEntry; wc: WorkingCopy }) {
+  const [sel, setSel] = useState<"all" | LogPath>("all");
+  const [diff, setDiff] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [ignoreWs, setIgnoreWs] = useState(false);
+
+  // Volta para "revisão inteira" ao trocar de revisão.
+  useEffect(() => setSel("all"), [entry.revision]);
+
+  const target = sel === "all" ? wc.path : `${wc.repoRoot}${sel.path}`;
+
+  useEffect(() => {
+    let alive = true;
+    setLoading(true);
+    api
+      .diffRevision(target, entry.revision, ignoreWs)
+      .then((d) => alive && setDiff(d))
+      .catch(() => alive && setDiff(""))
+      .finally(() => alive && setLoading(false));
+    return () => {
+      alive = false;
+    };
+  }, [target, entry.revision, ignoreWs]);
+
+  // Conteúdo de referência (revisão REV) para expandir contexto sob demanda.
+  const expandFor = useCallback(
+    (file: DiffFile): Promise<ContentRef | null> => {
+      const url = sel === "all" ? `${wc.url}/${file.path}` : `${wc.repoRoot}${sel.path}`;
+      return api
+        .catFile(url, entry.revision)
+        .then((t) => ({ side: "new" as const, lines: t.split("\n") }))
+        .catch(() => null);
+    },
+    [sel, wc.url, wc.repoRoot, entry.revision],
+  );
+
+  const selectedPath = sel === "all" ? null : sel;
+
   return (
     <div className="flex h-full flex-col">
-      <div className="border-b border-line px-5 py-4">
-        <div className="flex items-center gap-3">
-          <Avatar name={entry.author} size={38} />
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <span className="font-mono text-sm font-semibold text-brand">r{entry.revision}</span>
-              <span className="text-[13px] font-medium text-ink">{entry.author}</span>
+      {/* Topo: cabeçalho, mensagem e arquivos clicáveis. */}
+      <div className="flex max-h-[45%] shrink-0 flex-col border-b border-line">
+        <div className="px-5 pt-4">
+          <div className="flex items-center gap-3">
+            <Avatar name={entry.author} size={38} />
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <span className="font-mono text-sm font-semibold text-brand">r{entry.revision}</span>
+                <span className="text-[13px] font-medium text-ink">{entry.author}</span>
+              </div>
+              <div className="text-[11px] text-faint">{formatAbsolute(entry.date)}</div>
             </div>
-            <div className="text-[11px] text-faint">{formatAbsolute(entry.date)}</div>
           </div>
+          <p className="selectable mt-3 whitespace-pre-wrap text-[13px] leading-relaxed text-ink">
+            {entry.message || "(sem mensagem)"}
+          </p>
         </div>
-        <p className="selectable mt-3 whitespace-pre-wrap text-[13px] leading-relaxed text-ink">
-          {entry.message || "(sem mensagem)"}
-        </p>
-      </div>
-      <div className="min-h-0 flex-1 overflow-y-auto p-3">
-        <div className="px-2 pb-2 text-[11px] font-semibold uppercase tracking-wider text-faint">
-          {entry.paths.length} arquivo(s) alterado(s)
+
+        <div className="flex items-center justify-between gap-2 px-5 pb-2 pt-3">
+          <div className="text-[11px] font-semibold uppercase tracking-wider text-faint">
+            {entry.paths.length} arquivo(s) alterado(s)
+          </div>
+          <button
+            onClick={() => setSel("all")}
+            className={cn(
+              "flex items-center gap-1.5 rounded-md px-2 py-1 text-[11px] font-medium transition-colors",
+              sel === "all" ? "bg-brand/12 text-brand" : "text-faint hover:bg-panel-2 hover:text-ink",
+            )}
+          >
+            <FileDiff className="size-3.5" />
+            Diff da revisão inteira
+          </button>
         </div>
-        {entry.paths.map((p, i) => {
-          const meta = actionMeta(p.action);
-          return (
-            <div key={i} className="flex items-center gap-2.5 rounded-md px-2 py-1.5 hover:bg-panel-2">
-              <span
+
+        <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-2">
+          {entry.paths.map((p, i) => {
+            const meta = actionMeta(p.action);
+            const active = selectedPath === p;
+            return (
+              <button
+                key={i}
+                onClick={() => setSel(p)}
                 className={cn(
-                  "inline-flex size-5 shrink-0 items-center justify-center rounded-[5px] border font-mono text-[11px] font-bold",
-                  meta.text,
-                  meta.bg,
-                  meta.border,
+                  "flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left transition-colors",
+                  active ? "bg-panel-3" : "hover:bg-panel-2",
                 )}
-                title={meta.label}
               >
-                {p.action}
-              </span>
-              <span className="selectable truncate font-mono text-[12px] text-muted" title={p.path}>
-                {p.path}
-              </span>
-              {p.copyfromPath && (
-                <span className="shrink-0 text-[10px] text-faint">
-                  ← {p.copyfromPath}@{p.copyfromRev}
+                <span
+                  className={cn(
+                    "inline-flex size-5 shrink-0 items-center justify-center rounded-[5px] border font-mono text-[11px] font-bold",
+                    meta.text,
+                    meta.bg,
+                    meta.border,
+                  )}
+                  title={meta.label}
+                >
+                  {p.action}
                 </span>
-              )}
-            </div>
-          );
-        })}
+                <span className="selectable truncate font-mono text-[12px] text-muted" title={p.path}>
+                  {p.path}
+                </span>
+                {p.copyfromPath && (
+                  <span className="ml-auto shrink-0 text-[10px] text-faint">
+                    ← {p.copyfromPath}@{p.copyfromRev}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Baixo: diff do arquivo selecionado (ou da revisão inteira). */}
+      <div className="min-h-0 flex-1 overflow-y-auto p-4">
+        {loading ? (
+          <Loading label="Gerando diff…" />
+        ) : (
+          <DiffViewer
+            text={diff}
+            ignoreWs={ignoreWs}
+            onToggleIgnoreWs={setIgnoreWs}
+            onExpandContext={expandFor}
+          />
+        )}
       </div>
     </div>
   );
@@ -192,7 +271,7 @@ function History_({ wc }: { wc: WorkingCopy }) {
 
       <div className="min-w-0 flex-1">
         {selectedEntry ? (
-          <RevisionDetail entry={selectedEntry} />
+          <RevisionDetail entry={selectedEntry} wc={wc} />
         ) : (
           !loading &&
           !error && (
