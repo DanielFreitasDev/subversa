@@ -24,13 +24,16 @@
       }
     ],
     "security": {
-      "csp": null
+      "csp": "default-src 'self'; img-src 'self' asset: http://asset.localhost data:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; script-src 'self'; connect-src 'self' ipc: http://ipc.localhost; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'none'",
+      "devCsp": "default-src 'self'; img-src 'self' asset: http://asset.localhost data: blob:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; script-src 'self' 'unsafe-inline' 'unsafe-eval'; connect-src 'self' ipc: http://ipc.localhost ws://localhost:1421 http://localhost:1420; object-src 'none'"
     }
   },
   "bundle": {
     "active": true,
-    "targets": "all",
+    "targets": ["deb", "appimage"],
     "category": "DeveloperTool",
+    "publisher": "Daniel Souza",
+    "copyright": "© 2026 Daniel Souza",
     "shortDescription": "Cliente SVN desktop moderno",
     "longDescription": "Subversa é um cliente Subversion de desktop com design moderno, no estilo do TortoiseSVN: status, commit, branches, merge (sync/reintegrate), histórico, diff e resolução de conflitos.",
     "icon": [

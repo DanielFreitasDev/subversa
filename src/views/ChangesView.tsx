@@ -300,7 +300,7 @@ function Changes({ wc }: { wc: WorkingCopy }) {
               </Button>
             </Tooltip>
             <Tooltip label="Abrir no diff externo">
-              <Button variant="ghost" size="icon" onClick={() => api.openExternalDiff(wc.path, tool)}>
+              <Button variant="ghost" size="icon" onClick={() => tryRun(() => api.openExternalDiff(wc.path, tool), "Não consegui abrir o diff externo")}>
                 <ExternalLink className="size-4" />
               </Button>
             </Tooltip>
@@ -332,7 +332,7 @@ function Changes({ wc }: { wc: WorkingCopy }) {
                 onToggle={() => toggle(e.path)}
                 onHighlight={() => setHighlight(e.path)}
                 onRevert={() => revertPaths([e.path])}
-                onReveal={() => api.revealInFileManager(e.path)}
+                onReveal={() => tryRun(() => api.revealInFileManager(e.path), "Não consegui abrir o gerenciador de arquivos")}
                 onResolve={() => setConflictPath(e.path)}
               />
             ))
@@ -394,7 +394,7 @@ function Changes({ wc }: { wc: WorkingCopy }) {
             )}
           </div>
           {highlightEntry && (
-            <Button variant="ghost" size="sm" onClick={() => api.openExternalDiff(wc.path, tool)}>
+            <Button variant="ghost" size="sm" onClick={() => tryRun(() => api.openExternalDiff(wc.path, tool), "Não consegui abrir o diff externo")}>
               <ExternalLink className="size-3.5" />
               {tool}
             </Button>
@@ -413,7 +413,7 @@ function Changes({ wc }: { wc: WorkingCopy }) {
               ignoreWs={ignoreWs}
               onToggleIgnoreWs={setIgnoreWs}
               externalTool={tool}
-              onOpenExternal={() => api.openExternalDiff(wc.path, tool)}
+              onOpenExternal={() => tryRun(() => api.openExternalDiff(wc.path, tool), "Não consegui abrir o diff externo")}
               onExpandContext={
                 highlight
                   ? async () => {

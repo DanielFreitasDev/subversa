@@ -75,7 +75,7 @@ async fn build_working_copy(
 ) -> Result<WorkingCopy, String> {
     let path_str = path.to_string_lossy().to_string();
 
-    let info_xml = run_checked(&["info", "--xml", &path_str], None, mode).await?;
+    let info_xml = run_checked(&["info", "--xml", "--", &path_str], None, mode).await?;
     let info = parser::parse_info(&info_xml)?;
     let entry = info
         .entries
@@ -106,7 +106,7 @@ async fn build_working_copy(
     };
 
     // status local para contar modificações e detectar conflitos
-    let status_xml = run(&["status", "--xml", &path_str], None, mode)
+    let status_xml = run(&["status", "--xml", "--", &path_str], None, mode)
         .await
         .map(|o| o.stdout)
         .unwrap_or_default();
@@ -203,6 +203,7 @@ pub async fn get_status(
     if remote {
         args.push("-u");
     }
+    args.push("--");
     args.push(&path);
     let out = run(&args, None, mode).await?;
     if !out.success {
@@ -231,6 +232,7 @@ pub async fn get_diff(
         args.push("-x".into());
         args.push("-w".into());
     }
+    args.push("--".into());
     match files {
         Some(fs) if !fs.is_empty() => args.extend(fs),
         _ => args.push(path),
@@ -262,6 +264,7 @@ pub async fn diff_revision(
         args.push("-x");
         args.push("-w");
     }
+    args.push("--");
     args.push(target.as_str());
     run_checked(&args, None, mode).await
 }
@@ -288,6 +291,7 @@ pub async fn get_log(
         args.push("--search".into());
         args.push(term);
     }
+    args.push("--".into());
     args.push(target);
     let refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
     let xml = run_checked(&refs, None, mode).await?;
@@ -298,7 +302,7 @@ pub async fn get_log(
 #[tauri::command]
 pub async fn list_dir(url: String, state: State<'_, AppState>) -> Result<Vec<ListEntry>, String> {
     let mode = mode_of(&state);
-    let xml = run_checked(&["list", "--xml", "--non-interactive", &url], None, mode).await?;
+    let xml = run_checked(&["list", "--xml", "--non-interactive", "--", &url], None, mode).await?;
     parser::parse_list(&xml)
 }
 
@@ -315,6 +319,7 @@ pub async fn cat_file(
         args.push("-r".into());
         args.push(r);
     }
+    args.push("--".into());
     args.push(target);
     let refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
     run_checked(&refs, None, mode).await
@@ -324,8 +329,8 @@ pub async fn cat_file(
 #[tauri::command]
 pub async fn blame(target: String, state: State<'_, AppState>) -> Result<Vec<BlameLine>, String> {
     let mode = mode_of(&state);
-    let xml = run_checked(&["blame", "--xml", "--non-interactive", &target], None, mode).await?;
-    let content = run_checked(&["cat", "--non-interactive", &target], None, mode)
+    let xml = run_checked(&["blame", "--xml", "--non-interactive", "--", &target], None, mode).await?;
+    let content = run_checked(&["cat", "--non-interactive", "--", &target], None, mode)
         .await
         .unwrap_or_default();
     parser::parse_blame(&xml, &content)
@@ -342,14 +347,14 @@ pub async fn checkout(
     state: State<'_, AppState>,
 ) -> Result<CommandOutput, String> {
     let mode = mode_of(&state);
-    run(&["checkout", "--non-interactive", &url, &dest], None, mode).await
+    run(&["checkout", "--non-interactive", "--", &url, &dest], None, mode).await
 }
 
 #[tauri::command]
 pub async fn update(path: String, state: State<'_, AppState>) -> Result<CommandOutput, String> {
     let mode = mode_of(&state);
     run(
-        &["update", "--non-interactive", "--accept", "postpone", &path],
+        &["update", "--non-interactive", "--accept", "postpone", "--", &path],
         None,
         mode,
     )
@@ -375,6 +380,7 @@ pub async fn commit(
         "-m".into(),
         message,
     ];
+    args.push("--".into());
     args.extend(paths);
     let refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
     run(&refs, None, mode).await
@@ -390,6 +396,7 @@ pub async fn svn_add(
     }
     let mode = mode_of(&state);
     let mut args: Vec<String> = vec!["add".into(), "--parents".into()];
+    args.push("--".into());
     args.extend(paths);
     let refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
     run(&refs, None, mode).await
@@ -409,6 +416,7 @@ pub async fn revert(
     if recursive {
         args.push("-R".into());
     }
+    args.push("--".into());
     args.extend(paths);
     let refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
     run(&refs, None, mode).await
@@ -428,6 +436,7 @@ pub async fn remove(
     if keep_local {
         args.push("--keep-local".into());
     }
+    args.push("--".into());
     args.extend(paths);
     let refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
     run(&refs, None, mode).await
@@ -446,10 +455,11 @@ pub async fn create_branch(
             "copy",
             "--parents",
             "--non-interactive",
-            &source_url,
-            &branch_url,
             "-m",
             &message,
+            "--",
+            &source_url,
+            &branch_url,
         ],
         None,
         mode,
@@ -470,6 +480,7 @@ pub async fn switch_wc(
             "--non-interactive",
             "--accept",
             "postpone",
+            "--",
             &url,
             &path,
         ],
@@ -500,6 +511,7 @@ pub async fn merge(
     if record_only {
         args.push("--record-only".into());
     }
+    args.push("--".into());
     args.push(source_url);
     args.push(path);
     let refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
@@ -513,13 +525,13 @@ pub async fn resolve(
     state: State<'_, AppState>,
 ) -> Result<CommandOutput, String> {
     let mode = mode_of(&state);
-    run(&["resolve", "--accept", &accept, &path], None, mode).await
+    run(&["resolve", "--accept", &accept, "--", &path], None, mode).await
 }
 
 #[tauri::command]
 pub async fn cleanup(path: String, state: State<'_, AppState>) -> Result<CommandOutput, String> {
     let mode = mode_of(&state);
-    run(&["cleanup", &path], None, mode).await
+    run(&["cleanup", "--", &path], None, mode).await
 }
 
 #[tauri::command]
@@ -530,7 +542,7 @@ pub async fn delete_remote(
 ) -> Result<CommandOutput, String> {
     let mode = mode_of(&state);
     run(
-        &["delete", "--non-interactive", &url, "-m", &message],
+        &["delete", "--non-interactive", "-m", &message, "--", &url],
         None,
         mode,
     )
@@ -578,7 +590,7 @@ pub async fn test_connection(
     state: State<'_, AppState>,
 ) -> Result<CommandOutput, String> {
     let mode = mode_of(&state);
-    run(&["info", "--non-interactive", &url], None, mode).await
+    run(&["info", "--non-interactive", "--", &url], None, mode).await
 }
 
 /// Abre um caminho no gerenciador de arquivos do sistema.
@@ -597,13 +609,45 @@ pub fn reveal_in_file_manager(path: String) -> Result<(), String> {
     Ok(())
 }
 
+/// Valida o nome de uma ferramenta externa: apenas um nome de binário simples
+/// (sem caminho, espaços ou metacaracteres). Impede que o frontend dispare um
+/// binário arbitrário via IPC (defesa adicional caso surja um XSS).
+fn sanitize_tool(tool: &str) -> Option<String> {
+    let t = tool.trim();
+    let ok = !t.is_empty()
+        && t.len() <= 64
+        && t.chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.' | '+'));
+    ok.then(|| t.to_string())
+}
+
 /// Abre uma ferramenta de diff externa (ex.: meld) na working copy.
+///
+/// A ferramenta vem da configuração do usuário (Ajustes), nunca de dados do
+/// servidor. Validamos o formato (nome de binário simples) antes de executar.
 #[tauri::command]
 pub fn open_external_diff(
     target: String,
     tool: Option<String>,
+    state: State<'_, AppState>,
 ) -> Result<(), String> {
-    let tool = tool.unwrap_or_else(|| "meld".to_string());
+    let configured = state
+        .config
+        .lock()
+        .map(|c| c.external_diff_tool.clone())
+        .unwrap_or_default();
+    let raw = match tool {
+        Some(t) if !t.trim().is_empty() => t,
+        _ => configured,
+    };
+    let raw = if raw.trim().is_empty() {
+        "meld".to_string()
+    } else {
+        raw
+    };
+    let tool = sanitize_tool(&raw).ok_or_else(|| {
+        format!("ferramenta de diff inválida: {raw:?} (use só o nome do binário, ex.: meld)")
+    })?;
     std::process::Command::new(&tool)
         .arg(&target)
         .spawn()

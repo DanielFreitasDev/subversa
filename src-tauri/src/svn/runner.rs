@@ -33,8 +33,8 @@ pub async fn run(args: &[&str], cwd: Option<&Path>, mode: SshMode) -> Result<Com
         cmd.current_dir(dir);
     }
     cmd.env("SVN_SSH", conn::svn_ssh_value(mode));
-    // Garante saída UTF-8 estável do XML.
-    cmd.env("LC_ALL", std::env::var("LC_ALL").unwrap_or_default());
+    // Locale preservado de propósito (mensagens em pt-BR); o parsing usa `--xml`
+    // (sempre UTF-8) e os códigos de erro, ambos independentes de idioma.
 
     cmd.kill_on_drop(true);
 

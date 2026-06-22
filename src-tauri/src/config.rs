@@ -37,6 +37,12 @@ pub fn save(cfg: &AppConfig) -> Result<(), String> {
     let tmp = path.with_extension("json.tmp");
     let text = serde_json::to_string_pretty(cfg).map_err(|e| e.to_string())?;
     std::fs::write(&tmp, text).map_err(|e| e.to_string())?;
+    // Restringe ao dono: o arquivo contém host/usuário SSH.
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o600));
+    }
     std::fs::rename(&tmp, &path).map_err(|e| e.to_string())?;
     Ok(())
 }

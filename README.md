@@ -15,7 +15,7 @@ com os projetos e o servidor da sua equipe já pré-configurados.
 
 ## O que é
 
-**Subversa** é um aplicativo de desktop (Linux/Windows/macOS) para gerenciar todo o
+**Subversa** é um aplicativo de desktop **(Linux)** para gerenciar todo o
 ciclo de trabalho em SVN com a praticidade de uma ferramenta gráfica — detectar
 working copies, ver alterações, commitar, criar/trocar branches, sincronizar com a
 linha principal, publicar (reintegrar), navegar pelo repositório, ler o histórico e

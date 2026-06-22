@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 
 import { revealInFileManager } from "@/lib/api";
+import { tryRun } from "@/lib/op";
 import { cn } from "@/lib/utils";
 import { useActions } from "@/hooks/useActions";
 import { useSelectedWc } from "@/hooks/useSelectedWc";
@@ -169,7 +170,7 @@ export function CommandPalette() {
           title: "Abrir pasta no sistema",
           icon: <FolderOpen className="size-4" />,
           section: "Ações",
-          run: close(() => revealInFileManager(wc.path)),
+          run: close(() => tryRun(() => revealInFileManager(wc.path), "Não consegui abrir o gerenciador de arquivos")),
         },
       );
 

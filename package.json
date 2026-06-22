@@ -1,8 +1,11 @@
 {
   "name": "subversa",
   "private": true,
-  "version": "0.1.0",
+  "version": "1.0.0",
   "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
@@ -14,7 +17,6 @@
     "@fontsource-variable/jetbrains-mono": "^5.2.8",
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-dialog": "^2.7.1",
-    "@tauri-apps/plugin-opener": "^2",
     "clsx": "^2.1.1",
     "date-fns": "^4.4.0",
     "diff": "^9.0.0",

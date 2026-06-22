@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import * as api from "@/lib/api";
 import type { StatusResult } from "@/lib/types";
@@ -9,17 +9,26 @@ export function useStatus(path: string | undefined) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const aliveRef = useRef(true);
+  useEffect(() => {
+    aliveRef.current = true;
+    return () => {
+      aliveRef.current = false;
+    };
+  }, []);
+
   const reload = useCallback(
     async (remote = false) => {
       if (!path) return;
       setLoading(true);
       setError(null);
       try {
-        setData(await api.getStatus(path, remote));
+        const r = await api.getStatus(path, remote);
+        if (aliveRef.current) setData(r);
       } catch (e) {
-        setError(String(e));
+        if (aliveRef.current) setError(String(e));
       } finally {
-        setLoading(false);
+        if (aliveRef.current) setLoading(false);
       }
     },
     [path],

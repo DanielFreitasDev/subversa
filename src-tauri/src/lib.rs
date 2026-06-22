@@ -21,7 +21,6 @@ pub fn run() {
     let host = config.host.clone();
 
     tauri::Builder::default()
-        .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .manage(AppState {
             config: Mutex::new(config),

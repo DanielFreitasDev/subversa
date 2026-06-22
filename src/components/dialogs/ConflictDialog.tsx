@@ -89,7 +89,7 @@ export function ConflictDialog({
       <div className="space-y-2">
         <div className="flex gap-2">
           <button
-            onClick={() => api.openExternalDiff(wcPath, tool)}
+            onClick={() => tryRun(() => api.openExternalDiff(wcPath, tool), "Não consegui abrir o diff externo")}
             className="flex flex-1 items-center gap-3 rounded-lg border border-line bg-panel-2 px-3 py-2.5 text-left transition-colors hover:bg-panel-3"
           >
             <ExternalLink className="size-4 text-brand" />
