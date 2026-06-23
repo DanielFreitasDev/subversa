@@ -1,4 +1,4 @@
-import { Fragment, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
   ChevronDown,
@@ -266,6 +266,15 @@ export function FileBlock({
   const [loading, setLoading] = useState(false);
   const [reveal, setReveal] = useState<Record<string, number>>({});
   const [forceShow, setForceShow] = useState(false);
+
+  // Descarta conteúdo/expansões cacheados quando o diff muda. A key do bloco
+  // (`${i}-${file.path}`) pode ser reusada entre revisões com mesmo índice+path,
+  // o que faria o contexto expandido revelar linhas da revisão anterior.
+  useEffect(() => {
+    setContent(null);
+    setReveal({});
+    setForceShow(false);
+  }, [file]);
 
   const ensureContent = async (): Promise<ContentRef | null> => {
     if (content) return content;

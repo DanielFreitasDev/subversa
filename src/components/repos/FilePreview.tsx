@@ -39,9 +39,13 @@ export function FilePreview({ node }: { node: RepoNode }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Reseta ao trocar de arquivo.
+  // Reseta ao trocar de arquivo (evita um frame com o conteúdo do arquivo anterior
+  // sob o cabeçalho do novo, antes de o carregamento recomeçar).
   useEffect(() => {
     setTab("content");
+    setText(null);
+    setBlame(null);
+    setError(null);
   }, [node.url]);
 
   useEffect(() => {

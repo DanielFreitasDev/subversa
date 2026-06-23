@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { GitMerge, FileCheck2, FileX2, FileUp, ExternalLink, FileDiff } from "lucide-react";
 
 import * as api from "@/lib/api";
@@ -48,19 +48,26 @@ export function ConflictDialog({
   const [diff, setDiff] = useState<string | null>(null);
   const [loadingDiff, setLoadingDiff] = useState(false);
   const tool = useConfigStore((s) => s.config?.externalDiffTool ?? "meld");
+  // Token de requisição: invalida um getDiff em voo quando o arquivo muda ou a
+  // prévia é alternada de novo (evita exibir o diff de outro arquivo).
+  const reqRef = useRef(0);
 
   // Reinicia a prévia ao trocar de arquivo.
   useEffect(() => {
+    reqRef.current++;
     setShowDiff(false);
     setDiff(null);
+    setLoadingDiff(false);
   }, [path]);
 
   const togglePreview = async () => {
     const next = !showDiff;
     setShowDiff(next);
     if (next && diff === null && path && !loadingDiff) {
+      const req = ++reqRef.current;
       setLoadingDiff(true);
       const t = await api.getDiff(wcPath, [path]).catch(() => "");
+      if (req !== reqRef.current) return; // troca de arquivo assumiu
       setDiff(t);
       setLoadingDiff(false);
     }
