@@ -121,30 +121,40 @@ export function SettingsView() {
     setProjects((ps) => ps.map((p, j) => (j === i ? { ...p, ...patch } : p)));
   };
 
-  const removeProject = (i: number) => {
-    setProjectsDirty(true);
-    setProjects((ps) => ps.filter((_, j) => j !== i));
-  };
-
-  const addProject = () => {
-    setProjectsDirty(true);
-    setProjects((ps) => [
-      ...ps,
-      { key: "novo", name: "Novo projeto", description: "", url: config.repoRoots[0] ?? "" },
-    ]);
-  };
-
-  const saveProjects = async () => {
-    const bad = projects.find(
+  /** Valida o esquema das URLs e persiste; devolve false (sem salvar) se inválido. */
+  const commitProjects = (next: Project[]): boolean => {
+    const bad = next.find(
       (p) => p.url.trim() && !/^(svn\+ssh|https?|svn|file):\/\//.test(p.url.trim()),
     );
     if (bad) {
       toast.warn("URL de projeto inválida", `"${bad.name || bad.key}" precisa de um esquema (svn+ssh://…).`);
-      return;
+      return false;
     }
-    await save({ projects });
     setProjectsDirty(false);
-    toast.success("Projetos salvos");
+    save({ projects: next });
+    return true;
+  };
+
+  // Auto-salva ao sair de um campo de projeto (consistente com Host/Ferramenta).
+  const commitProjectsOnBlur = () => commitProjects(projects);
+
+  const removeProject = (i: number) => {
+    const next = projects.filter((_, j) => j !== i);
+    setProjects(next);
+    commitProjects(next);
+  };
+
+  const addProject = () => {
+    const next: Project[] = [
+      ...projects,
+      { key: "novo", name: "Novo projeto", description: "", url: config.repoRoots[0] ?? "" },
+    ];
+    setProjects(next);
+    commitProjects(next);
+  };
+
+  const saveProjects = () => {
+    if (commitProjects(projects)) toast.success("Projetos salvos");
   };
 
   const roots = config.repoRoots;
@@ -314,12 +324,14 @@ export function SettingsView() {
                   <Input
                     value={p.key}
                     onChange={(e) => updateProject(i, { key: e.target.value })}
+                    onBlur={commitProjectsOnBlur}
                     placeholder="id"
                     className="h-8 w-28 text-[12px]"
                   />
                   <Input
                     value={p.name}
                     onChange={(e) => updateProject(i, { name: e.target.value })}
+                    onBlur={commitProjectsOnBlur}
                     placeholder="nome"
                     className="h-8 flex-1 text-[12px]"
                   />
@@ -333,12 +345,14 @@ export function SettingsView() {
                 <Input
                   value={p.description}
                   onChange={(e) => updateProject(i, { description: e.target.value })}
+                  onBlur={commitProjectsOnBlur}
                   placeholder="descrição"
                   className="mt-2 h-8 text-[12px]"
                 />
                 <Input
                   value={p.url}
                   onChange={(e) => updateProject(i, { url: e.target.value })}
+                  onBlur={commitProjectsOnBlur}
                   placeholder="svn+ssh://…"
                   className="mt-2 h-8 font-mono text-[11px]"
                 />
