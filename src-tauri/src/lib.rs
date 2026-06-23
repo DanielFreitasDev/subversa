@@ -8,6 +8,8 @@ mod svn;
 
 use std::sync::Mutex;
 
+use tauri::Manager;
+
 use svn::types::AppConfig;
 
 /// Estado global compartilhado entre os comandos.
@@ -24,6 +26,18 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .manage(AppState {
             config: Mutex::new(config),
+        })
+        .setup(|app| {
+            // Reaplica o ícone embutido na janela após sua criação. Garante o
+            // logo no título e na barra de tarefas do Linux (_NET_WM_ICON),
+            // inclusive em modo dev, sem depender do empacotamento.
+            if let (Some(icon), Some(win)) = (
+                app.default_window_icon().cloned(),
+                app.get_webview_window("main"),
+            ) {
+                let _ = win.set_icon(icon);
+            }
+            Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             // leitura / detecção

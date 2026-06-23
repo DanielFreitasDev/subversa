@@ -16,6 +16,7 @@ import {
 import * as api from "@/lib/api";
 import { Button } from "@/components/ui/Button";
 import { Input, Switch } from "@/components/ui/Field";
+import { Logo } from "@/components/ui/Logo";
 import { Segmented } from "@/components/ui/Segmented";
 import { reportOutput, tryRun } from "@/lib/op";
 import type { Project } from "@/lib/types";
@@ -345,9 +346,15 @@ export function SettingsView() {
         </Section>
 
         {/* Sobre */}
-        <div className="flex items-center justify-between px-1 py-2 text-[11px] text-faint">
-          <span>Subversa 1.0.0</span>
-          <span>cliente svn {version}</span>
+        <div className="flex items-center gap-3 rounded-xl border border-line bg-panel p-4">
+          <Logo size={44} className="shrink-0 rounded-[22%] shadow-soft" />
+          <div className="min-w-0 flex-1">
+            <div className="flex items-baseline gap-2">
+              <span className="text-[14px] font-semibold text-ink">Subversa</span>
+              <span className="font-mono text-[11px] text-faint">1.0.0</span>
+            </div>
+            <div className="text-[11px] text-faint">Cliente SVN moderno{version && ` · svn ${version}`}</div>
+          </div>
         </div>
       </div>
     </div>

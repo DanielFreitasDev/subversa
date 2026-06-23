@@ -14,26 +14,13 @@ import {
 } from "lucide-react";
 
 import { Tooltip } from "@/components/ui/Tooltip";
+import { Wordmark } from "@/components/ui/Logo";
 import { useSelectedWc } from "@/hooks/useSelectedWc";
 import { cn } from "@/lib/utils";
 import { useConfigStore } from "@/store/config";
 import { useUiStore } from "@/store/ui";
 import { useWorkspaceStore } from "@/store/workspace";
 import type { WorkingCopy } from "@/lib/types";
-
-function BrandMark() {
-  return (
-    <div className="flex items-center gap-2.5 px-1">
-      <div className="relative flex size-9 items-center justify-center rounded-xl bg-brand-gradient shadow-soft">
-        <GitBranch className="size-5 text-white" strokeWidth={2.4} />
-      </div>
-      <div className="leading-tight">
-        <div className="text-[15px] font-semibold tracking-tight text-ink">Subversa</div>
-        <div className="text-[11px] text-faint">Cliente SVN</div>
-      </div>
-    </div>
-  );
-}
 
 function WcRow({ wc, active, onClick }: { wc: WorkingCopy; active: boolean; onClick: () => void }) {
   const isTrunk = wc.kind === "trunk";
@@ -105,7 +92,7 @@ export function Sidebar() {
   return (
     <aside className="flex h-full w-[280px] shrink-0 flex-col border-r border-line bg-panel">
       <div className="px-4 pb-3 pt-4" data-tauri-drag-region>
-        <BrandMark />
+        <Wordmark size={36} />
       </div>
 
       <div className="space-y-0.5 px-3">

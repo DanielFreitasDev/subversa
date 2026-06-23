@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
-import { GitBranch } from "lucide-react";
 
 import { AppShell } from "@/components/layout/AppShell";
+import { Logo } from "@/components/ui/Logo";
 import { suggestedBaseDir } from "@/lib/api";
 import { useConfigStore } from "@/store/config";
 import { useUiStore } from "@/store/ui";
@@ -11,9 +11,7 @@ function Splash() {
   return (
     <div className="flex h-full items-center justify-center bg-canvas">
       <div className="flex flex-col items-center gap-4">
-        <div className="flex size-14 animate-pulse items-center justify-center rounded-2xl bg-brand-gradient shadow-pop">
-          <GitBranch className="size-7 text-white" strokeWidth={2.4} />
-        </div>
+        <Logo size={56} className="animate-pulse rounded-[22%] shadow-pop" />
         <div className="text-sm text-faint">Carregando Subversa…</div>
       </div>
     </div>
