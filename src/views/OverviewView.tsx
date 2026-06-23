@@ -126,7 +126,11 @@ function WcCard({
 }
 
 export function OverviewView() {
-  const { workingCopies, loading, baseDir, select, refresh } = useWorkspaceStore();
+  const workingCopies = useWorkspaceStore((s) => s.workingCopies);
+  const loading = useWorkspaceStore((s) => s.loading);
+  const baseDir = useWorkspaceStore((s) => s.baseDir);
+  const select = useWorkspaceStore((s) => s.select);
+  const refresh = useWorkspaceStore((s) => s.refresh);
   const setView = useUiStore((s) => s.setView);
   const setCheckout = useUiStore((s) => s.setCheckout);
   const projects = useConfigStore((s) => s.config?.projects ?? []);

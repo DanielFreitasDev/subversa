@@ -21,6 +21,7 @@ interface ToastState {
 }
 
 let seq = 1;
+const timers = new Map<number, ReturnType<typeof setTimeout>>();
 
 export const useToastStore = create<ToastState>((set, get) => ({
   toasts: [],
@@ -29,12 +30,23 @@ export const useToastStore = create<ToastState>((set, get) => ({
     const duration = t.duration ?? (t.kind === "error" ? 8000 : 4200);
     set((s) => ({ toasts: [...s.toasts, { ...t, id, duration }] }));
     if (duration > 0) {
-      setTimeout(() => get().dismiss(id), duration);
+      timers.set(id, setTimeout(() => get().dismiss(id), duration));
     }
     return id;
   },
-  dismiss: (id) => set((s) => ({ toasts: s.toasts.filter((x) => x.id !== id) })),
-  clear: () => set({ toasts: [] }),
+  dismiss: (id) => {
+    const h = timers.get(id);
+    if (h) {
+      clearTimeout(h);
+      timers.delete(id);
+    }
+    set((s) => ({ toasts: s.toasts.filter((x) => x.id !== id) }));
+  },
+  clear: () => {
+    timers.forEach((h) => clearTimeout(h));
+    timers.clear();
+    set({ toasts: [] });
+  },
 }));
 
 /** Atalhos imperativos para usar fora de componentes. */

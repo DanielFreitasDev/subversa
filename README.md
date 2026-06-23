@@ -107,7 +107,7 @@ Veja **[docs/ARQUITETURA.md](docs/ARQUITETURA.md)** para o detalhamento.
 - **sshpass** (para autenticar `svn+ssh` por senha): `sudo apt install sshpass`.
 - A senha em `$SSHPASS` (já vem do `/etc/environment` no seu setup), **ou** uma chave
   SSH/`ssh-agent` configurada no servidor.
-- Para **desenvolver/compilar**: Node 18+, Rust (stable) e as libs do Tauri
+- Para **desenvolver/compilar**: Node 20+, Rust (stable) e as libs do Tauri
   (`webkit2gtk-4.1`, `libsoup-3.0`).
 
 ---
@@ -132,6 +132,12 @@ npm run tauri build -- --bundles deb   # apenas o .deb (Ubuntu/Debian)
 
 Os artefatos saem em `src-tauri/target/release/` (binário `subversa`) e
 `src-tauri/target/release/bundle/` (`.deb`, `.AppImage`, etc.).
+
+> **Distribuição:** manual — não há auto-updater nem assinatura de binário.
+> Atualizar = gerar e distribuir um novo pacote. O "abrir no gerenciador de
+> arquivos" e o diff externo usam ferramentas do Linux (`xdg-open`).
+> Na primeira execução o app abre uma tela de configuração pedindo o host SSH.
+> Em caso de crash, um log é gravado em `~/.cache/subversa/crash.log`.
 
 ---
 
@@ -190,6 +196,7 @@ ou `ssh` puro quando você usa chave; e mantém um **ControlMaster** persistente
 
 ## Licença
 
-Projeto interno, feito sob medida. Use à vontade.
+Projeto interno e proprietário (`UNLICENSED`), feito sob medida para o fluxo da
+equipe. Sem licença pública de distribuição.
 
 <div align="center"><sub>Subversa · cliente SVN moderno · construído com Tauri + React</sub></div>

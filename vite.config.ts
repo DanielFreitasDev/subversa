@@ -16,6 +16,19 @@ export default defineConfig(async () => ({
     },
   },
 
+  // Separa as libs pesadas (realce e animação) do bundle principal — reduz o
+  // tamanho do chunk inicial e o cold-start do webview.
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          highlight: ["lowlight"],
+          motion: ["framer-motion"],
+        },
+      },
+    },
+  },
+
   // Opções do Vite adaptadas ao desenvolvimento com Tauri.
   clearScreen: false,
   server: {
