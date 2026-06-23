@@ -7,7 +7,7 @@ import { useEffect, useState } from "react";
 import { ChevronRight, Home } from "lucide-react";
 
 import * as api from "@/lib/api";
-import { cn, decodeUrl } from "@/lib/utils";
+import { cn, decodeUrl, decodeUrlSafe } from "@/lib/utils";
 import { useRepoBrowserStore, type RepoNode } from "@/store/repoBrowser";
 
 export function RepoBreadcrumb() {
@@ -25,12 +25,16 @@ export function RepoBreadcrumb() {
     if (!currentUrl) return;
     let alive = true;
     setRev(null);
-    api
-      .getUrlInfo(currentUrl)
-      .then((info) => alive && setRev(info.revision))
-      .catch(() => alive && setRev(null));
+    // Debounce: navegar rápido pela árvore não dispara um enxame de `svn info`.
+    const t = setTimeout(() => {
+      api
+        .getUrlInfo(currentUrl)
+        .then((info) => alive && setRev(info.revision))
+        .catch(() => alive && setRev(null));
+    }, 250);
     return () => {
       alive = false;
+      clearTimeout(t);
     };
   }, [currentUrl]);
 
@@ -65,7 +69,7 @@ export function RepoBreadcrumb() {
           "flex items-center gap-1 rounded px-1.5 py-1 hover:bg-panel-2 hover:text-ink",
           crumbs.length === 0 ? "text-ink" : "text-faint",
         )}
-        title={decodeUrl(location)}
+        title={decodeUrlSafe(location)}
       >
         <Home className="size-3.5" />
       </button>
@@ -79,7 +83,7 @@ export function RepoBreadcrumb() {
               i === crumbs.length - 1 ? "text-ink" : "text-muted",
             )}
           >
-            {c}
+            {decodeUrlSafe(c)}
           </button>
         </div>
       ))}

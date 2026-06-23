@@ -13,6 +13,21 @@ export function decodeUrl(s: string): string {
   return s.replace(/%20/g, " ");
 }
 
+/**
+ * Decodifica uma URL apenas para EXIBIÇÃO — além de `%20`, resolve acentos
+ * percent-encodados (`%C3%87`→`Ç`). Usa `decodeURIComponent` com fallback seguro
+ * (string com `%` solto/escape inválido não quebra). **Nunca** use o resultado
+ * para construir URLs reais — só para mostrar ao usuário; as URLs são montadas a
+ * partir dos nomes literais do `svn list`.
+ */
+export function decodeUrlSafe(s: string): string {
+  try {
+    return decodeURIComponent(s);
+  } catch {
+    return s.replace(/%20/g, " ");
+  }
+}
+
 /** Remove o prefixo `^/` da URL relativa do SVN. */
 export function stripCaret(s: string): string {
   return s.replace(/^\^\//, "");

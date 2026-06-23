@@ -14,7 +14,7 @@ import {
 
 import { Empty } from "@/components/ui/Empty";
 import type { ListEntry } from "@/lib/types";
-import { cn, decodeUrl, formatRelative } from "@/lib/utils";
+import { cn, decodeUrlSafe, formatRelative } from "@/lib/utils";
 import {
   nodeKind,
   useRepoBrowserStore,
@@ -91,7 +91,7 @@ function NodeRow({
         ) : (
           <FileIcon className="size-4 shrink-0 text-faint" />
         )}
-        <span className="truncate text-[13px] text-ink">{decodeUrl(entry.name)}</span>
+        <span className="truncate text-[13px] text-ink">{decodeUrlSafe(entry.name)}</span>
         {entry.revision && (
           <span className="shrink-0 font-mono text-[10px] text-faint">r{entry.revision}</span>
         )}

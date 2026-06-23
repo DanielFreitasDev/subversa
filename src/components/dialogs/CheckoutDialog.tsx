@@ -135,6 +135,12 @@ export function CheckoutDialog() {
                 setName(leaf);
               }
             }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && canSubmit) {
+                e.preventDefault();
+                doCheckout();
+              }
+            }}
             placeholder="svn+ssh://usuario@host/caminho/projeto"
             className="mt-1 font-mono text-[12px]"
             autoFocus
@@ -145,7 +151,17 @@ export function CheckoutDialog() {
       <div className="mt-4 grid grid-cols-[1fr_auto] items-end gap-3">
         <Label>
           Pasta de destino (nome)
-          <Input value={name} onChange={(e) => setName(e.target.value)} className="mt-1" />
+          <Input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && canSubmit) {
+                e.preventDefault();
+                doCheckout();
+              }
+            }}
+            className="mt-1"
+          />
         </Label>
       </div>
       {url && (

@@ -130,8 +130,12 @@ export const useRepoBrowserStore = create<RepoBrowserState>((set, get) => ({
   refreshAll: async () => {
     const { activeLocation, expanded } = get();
     if (!activeLocation) return;
-    const urls = new Set<string>([activeLocation, ...expanded]);
-    await Promise.all([...urls].map((u) => get().loadChildren(u, true)));
+    const urls = [...new Set<string>([activeLocation, ...expanded])];
+    // Limita a concorrência para não saturar o SSH com dezenas de `svn list`.
+    const LIMIT = 6;
+    for (let i = 0; i < urls.length; i += LIMIT) {
+      await Promise.all(urls.slice(i, i + LIMIT).map((u) => get().loadChildren(u, true)));
+    }
   },
 
   openDialog: (kind, node) => set({ dialog: { kind, node } }),

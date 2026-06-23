@@ -24,7 +24,7 @@ import { Input, Label, Switch, Textarea } from "@/components/ui/Field";
 import { Modal } from "@/components/ui/Modal";
 import { Segmented } from "@/components/ui/Segmented";
 import { extractRevision, reportOutput, tryRun } from "@/lib/op";
-import { baseName, decodeUrl } from "@/lib/utils";
+import { baseName, decodeUrl, decodeUrlSafe } from "@/lib/utils";
 import { useRepoBrowserStore } from "@/store/repoBrowser";
 
 const MONTHS = [
@@ -114,7 +114,18 @@ export function RepoOpDialog() {
   const importTargetUrl = `${node.url}/${text.trim()}`;
   const exportDest = dest ? `${dest}/${leaf}` : "";
   const needsMessage = kind !== "export";
-  const sameRepo = kind !== "move" || (!!activeLocation && url.trim().startsWith(activeLocation));
+  // No move, o destino deve ficar na mesma localização — comparado por fronteira
+  // de segmento e com encoding normalizado (evita bloquear destino válido e
+  // evita liberar repo de prefixo parecido, ex.: veiculo × veiculo2).
+  const sameRepo =
+    kind !== "move" ||
+    (!!activeLocation &&
+      (() => {
+        const dest = decodeUrlSafe(url.trim());
+        const root = decodeUrlSafe(activeLocation);
+        const prefix = root.endsWith("/") ? root : `${root}/`;
+        return dest === root || dest.startsWith(prefix);
+      })());
 
   const canSubmit = (() => {
     if (busy) return false;
@@ -230,11 +241,23 @@ export function RepoOpDialog() {
           <>
             <Label hint="Cria sob a pasta atual (use / para subpastas; --parents).">
               Nome da nova pasta
-              <Input value={text} onChange={(e) => setText(e.target.value)} placeholder="nova_pasta" autoFocus className="mt-1" />
+              <Input
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && canSubmit) {
+                    e.preventDefault();
+                    run();
+                  }
+                }}
+                placeholder="nova_pasta"
+                autoFocus
+                className="mt-1"
+              />
             </Label>
             {text.trim() && (
               <div className="break-all rounded-lg bg-panel-2 px-3 py-2 font-mono text-[11px] text-muted">
-                {decodeUrl(mkdirUrl)}
+                {decodeUrlSafe(mkdirUrl)}
               </div>
             )}
           </>
@@ -247,6 +270,12 @@ export function RepoOpDialog() {
               <Input
                 value={url}
                 onChange={(e) => setUrl(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && canSubmit) {
+                    e.preventDefault();
+                    run();
+                  }
+                }}
                 autoFocus
                 className="mt-1 font-mono text-[12px]"
               />
@@ -271,7 +300,19 @@ export function RepoOpDialog() {
             />
             <Label hint={tagMode === "tag" ? "Vira tags/<descrição>." : "Vira branches/ISSUES …/<descrição>/<projeto>."}>
               Descrição
-              <Input value={text} onChange={(e) => setText(e.target.value)} placeholder="issue_1234" autoFocus className="mt-1" />
+              <Input
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && canSubmit) {
+                    e.preventDefault();
+                    run();
+                  }
+                }}
+                placeholder="issue_1234"
+                autoFocus
+                className="mt-1"
+              />
             </Label>
             <div>
               <div className="mb-1.5 flex items-center justify-between">
@@ -311,7 +352,7 @@ export function RepoOpDialog() {
             </Label>
             {text.trim() && (
               <div className="break-all rounded-lg bg-panel-2 px-3 py-2 font-mono text-[11px] text-muted">
-                {decodeUrl(importTargetUrl)}
+                {decodeUrlSafe(importTargetUrl)}
               </div>
             )}
           </>

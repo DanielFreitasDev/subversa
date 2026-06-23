@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ArrowRightLeft,
   ChevronRight,
@@ -22,7 +22,7 @@ import { useActions } from "@/hooks/useActions";
 import { useSelectedWc } from "@/hooks/useSelectedWc";
 import { extractRevision, reportOutput, tryRun } from "@/lib/op";
 import type { ListEntry, WorkingCopy } from "@/lib/types";
-import { cn, decodeUrl, formatRelative } from "@/lib/utils";
+import { cn, decodeUrl, decodeUrlSafe, formatRelative } from "@/lib/utils";
 import { confirm } from "@/store/confirm";
 import { useConfigStore } from "@/store/config";
 import { useUiStore } from "@/store/ui";
@@ -43,17 +43,21 @@ function Browser({ wc }: { wc: WorkingCopy }) {
   const setCreateBranch = useUiStore((s) => s.setCreateBranch);
   const refresh = useWorkspaceStore((s) => s.refresh);
 
+  const reqRef = useRef(0);
   const load = useCallback(async (target: string) => {
+    const req = ++reqRef.current;
     setLoading(true);
     setError(null);
     try {
       const list = await api.listDir(target);
+      if (req !== reqRef.current) return; // navegação mais recente assumiu
       setEntries(list);
     } catch (e) {
+      if (req !== reqRef.current) return;
       setError(String(e));
       setEntries([]);
     } finally {
-      setLoading(false);
+      if (req === reqRef.current) setLoading(false);
     }
   }, []);
 
@@ -73,7 +77,7 @@ function Browser({ wc }: { wc: WorkingCopy }) {
     const target = `${url}/${entry.name}`;
     const ok = await confirm({
       title: "Apagar do servidor?",
-      message: `Isso remove permanentemente:\n\n${decodeUrl(target)}`,
+      message: `Isso remove permanentemente:\n\n${decodeUrlSafe(target)}`,
       danger: true,
       confirmLabel: "Apagar",
       requireText: entry.name,
@@ -143,7 +147,7 @@ function Browser({ wc }: { wc: WorkingCopy }) {
               onClick={() => goTo(i)}
               className="max-w-[180px] truncate rounded px-1.5 py-1 text-muted hover:bg-panel-2 hover:text-ink"
             >
-              {c}
+              {decodeUrlSafe(c)}
             </button>
           </div>
         ))}
@@ -214,7 +218,7 @@ function Browser({ wc }: { wc: WorkingCopy }) {
                   <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
                     <Tooltip label="Apontar minha WC para cá (switch)">
                       <button
-                        onClick={() => switchTo(wc, childUrl, decodeUrl(childUrl.slice(repoRoot.length)))}
+                        onClick={() => switchTo(wc, childUrl, decodeUrlSafe(childUrl.slice(repoRoot.length)))}
                         className="flex size-7 items-center justify-center rounded text-faint hover:bg-panel-3 hover:text-brand"
                       >
                         <ArrowRightLeft className="size-3.5" />

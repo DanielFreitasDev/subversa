@@ -121,6 +121,12 @@ export function CreateBranchDialog() {
           <Input
             value={desc}
             onChange={(e) => setDesc(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && canSubmit) {
+                e.preventDefault();
+                create();
+              }
+            }}
             placeholder="issue_1234"
             autoFocus
             className="mt-1"
