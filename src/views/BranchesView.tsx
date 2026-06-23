@@ -44,22 +44,30 @@ function Browser({ wc }: { wc: WorkingCopy }) {
   const refresh = useWorkspaceStore((s) => s.refresh);
 
   const reqRef = useRef(0);
-  const load = useCallback(async (target: string) => {
-    const req = ++reqRef.current;
-    setLoading(true);
-    setError(null);
-    try {
-      const list = await api.listDir(target);
-      if (req !== reqRef.current) return; // navegação mais recente assumiu
-      setEntries(list);
-    } catch (e) {
-      if (req !== reqRef.current) return;
-      setError(String(e));
-      setEntries([]);
-    } finally {
-      if (req === reqRef.current) setLoading(false);
-    }
-  }, []);
+  const load = useCallback(
+    async (target: string) => {
+      const req = ++reqRef.current;
+      setLoading(true);
+      setError(null);
+      try {
+        const list = await api.listDir(target);
+        if (req !== reqRef.current) return; // navegação mais recente assumiu
+        setEntries(list);
+      } catch (e) {
+        if (req !== reqRef.current) return;
+        // Repositório sem layout padrão: se /branches não existe, cai para a raiz.
+        if (target === `${repoRoot}/branches`) {
+          setUrl(repoRoot);
+          return;
+        }
+        setError(String(e));
+        setEntries([]);
+      } finally {
+        if (req === reqRef.current) setLoading(false);
+      }
+    },
+    [repoRoot],
+  );
 
   useEffect(() => {
     load(url);
@@ -75,9 +83,13 @@ function Browser({ wc }: { wc: WorkingCopy }) {
 
   const deleteBranch = async (entry: ListEntry) => {
     const target = `${url}/${entry.name}`;
+    const isCurrent = decodeUrlSafe(target) === decodeUrlSafe(wc.url);
     const ok = await confirm({
       title: "Apagar do servidor?",
-      message: `Isso remove permanentemente:\n\n${decodeUrlSafe(target)}`,
+      message:
+        (isCurrent
+          ? "⚠️ Esta é a linha onde a SUA working copy está apontando — apagá-la deixa a WC órfã (update/commit passarão a falhar).\n\n"
+          : "") + `Isso remove permanentemente:\n\n${decodeUrlSafe(target)}`,
       danger: true,
       confirmLabel: "Apagar",
       requireText: entry.name,

@@ -81,12 +81,14 @@ export function CreateBranchDialog() {
       }
       if (switchAfter) {
         const sw = await api.switchWc(wc.path, branchUrl);
-        if (sw.success) {
-          toast.success("Working copy na nova branch", "Os commits agora vão para ela.");
-          await refreshOne(wc.path);
-        } else {
+        await refreshOne(wc.path);
+        if (!sw.success) {
+          // A branch foi criada no servidor, mas a WC não trocou: mantém o diálogo
+          // aberto com o erro (não fecha como se tudo tivesse dado certo).
           reportOutput(sw, "");
+          return;
         }
+        toast.success("Working copy na nova branch", "Os commits agora vão para ela.");
       }
       setOpen(false);
     } finally {

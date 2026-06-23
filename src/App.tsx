@@ -4,6 +4,8 @@ import { AppShell } from "@/components/layout/AppShell";
 import { Logo } from "@/components/ui/Logo";
 import { suggestedBaseDir } from "@/lib/api";
 import { useConfigStore } from "@/store/config";
+import { useConfirmStore } from "@/store/confirm";
+import { useRepoBrowserStore } from "@/store/repoBrowser";
 import { useUiStore } from "@/store/ui";
 import { useWorkspaceStore } from "@/store/workspace";
 import { SetupView } from "@/views/SetupView";
@@ -50,6 +52,14 @@ export default function App() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        // Não abre a paleta por cima de um diálogo/confirmação modal.
+        if (
+          useConfirmStore.getState().pending ||
+          useUiStore.getState().checkoutOpen ||
+          useUiStore.getState().createBranchOpen ||
+          useRepoBrowserStore.getState().dialog
+        )
+          return;
         e.preventDefault();
         togglePalette();
       }

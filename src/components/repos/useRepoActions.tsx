@@ -41,7 +41,7 @@ function parentOf(url: string): string {
 
 export function copyUrl(url: string) {
   navigator.clipboard
-    .writeText(decodeUrl(url))
+    ?.writeText(decodeUrl(url))
     .then(() => toast.success("URL copiada"))
     .catch(() => toast.error("Não consegui copiar a URL"));
 }

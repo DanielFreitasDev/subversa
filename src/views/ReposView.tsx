@@ -21,7 +21,9 @@ import { copyUrl, useRepoActions } from "@/components/repos/useRepoActions";
 import type { UrlInfo } from "@/lib/types";
 import { decodeUrl, formatAbsolute, formatRelative } from "@/lib/utils";
 import { useConfigStore } from "@/store/config";
+import { useConfirmStore } from "@/store/confirm";
 import { useRepoBrowserStore, type RepoNode } from "@/store/repoBrowser";
+import { useUiStore } from "@/store/ui";
 
 function NodeDetails({ node }: { node: RepoNode }) {
   const [info, setInfo] = useState<UrlInfo | null>(null);
@@ -109,6 +111,15 @@ export function ReposView() {
     const onKey = (e: KeyboardEvent) => {
       const el = document.activeElement;
       if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA")) return;
+      // Não interfere quando há um diálogo/paleta/confirmação por cima.
+      if (
+        useRepoBrowserStore.getState().dialog ||
+        useConfirmStore.getState().pending ||
+        useUiStore.getState().paletteOpen ||
+        useUiStore.getState().checkoutOpen ||
+        useUiStore.getState().createBranchOpen
+      )
+        return;
       if (e.key === "F5") {
         e.preventDefault();
         refreshAll();

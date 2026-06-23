@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import {
   AlertTriangle,
@@ -137,6 +137,13 @@ export function OverviewView() {
   const { update } = useActions();
   const [servers, setServers] = useState<Record<string, ServerInfo>>({});
   const [checking, setChecking] = useState(false);
+  // Época de "conferir servidor": ignora as respostas de uma checagem superada.
+  const checkEpoch = useRef(0);
+
+  // Esquece os dados de servidor ao trocar de pasta-base (outras working copies).
+  useEffect(() => {
+    setServers({});
+  }, [baseDir]);
 
   const open = (wc: WorkingCopy) => {
     select(wc.path);
@@ -144,24 +151,27 @@ export function OverviewView() {
   };
 
   const checkAll = async () => {
+    const epoch = ++checkEpoch.current;
     setChecking(true);
     setServers(Object.fromEntries(workingCopies.map((w) => [w.path, { incoming: 0, loading: true }])));
     await Promise.all(
       workingCopies.map(async (w) => {
         try {
           const r = await api.getStatus(w.path, true);
-          setServers((s) => ({ ...s, [w.path]: { incoming: r.incomingCount, loading: false } }));
+          if (epoch === checkEpoch.current)
+            setServers((s) => ({ ...s, [w.path]: { incoming: r.incomingCount, loading: false } }));
         } catch {
-          setServers((s) => ({ ...s, [w.path]: { incoming: 0, loading: false } }));
+          if (epoch === checkEpoch.current)
+            setServers((s) => ({ ...s, [w.path]: { incoming: 0, loading: false } }));
         }
       }),
     );
-    setChecking(false);
+    if (epoch === checkEpoch.current) setChecking(false);
   };
 
   const withChanges = workingCopies.filter((w) => w.modifiedCount > 0).length;
   const withConflicts = workingCopies.filter((w) => w.hasConflicts).length;
-  const missing = projects.filter((p) => !workingCopies.some((w) => w.name === p.key || w.projectKey === p.key));
+  const missing = projects.filter((p) => !workingCopies.some((w) => w.projectKey === p.key));
 
   return (
     <div className="h-full overflow-y-auto">

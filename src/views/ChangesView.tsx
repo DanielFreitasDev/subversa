@@ -203,6 +203,9 @@ function Changes({ wc }: { wc: WorkingCopy }) {
   const selectableEntries = entries.filter(isSelectable);
   const allSelected = selectableEntries.length > 0 && selectableEntries.every((e) => checked.has(e.path));
   const hasConflicts = entries.some((e) => e.item === "conflicted" || e.treeConflicted);
+  // "trunk" literal só quando a WC está mesmo no trunk (um preset pode ter uma
+  // branch como linha principal do projeto).
+  const mainlineLabel = wc.kind === "trunk" ? "linha principal (trunk)" : "linha principal";
 
   const toggle = (path: string) =>
     setChecked((prev) => {
@@ -242,6 +245,7 @@ function Changes({ wc }: { wc: WorkingCopy }) {
   };
 
   const doCommit = async () => {
+    if (committing) return; // evita dupla submissão (ex.: Ctrl+Enter repetido)
     const toCommit = entries.filter((e) => checked.has(e.path));
     if (!toCommit.length) return toast.warn("Selecione ao menos um arquivo");
     if (!message.trim()) return toast.warn("Escreva uma mensagem de commit");
@@ -249,12 +253,12 @@ function Changes({ wc }: { wc: WorkingCopy }) {
       return toast.error("Há conflitos pendentes", "Resolva os conflitos antes de commitar");
     }
 
-    const summary = `${toCommit.length} item(ns) → ${wc.isMainline ? "linha principal (trunk)" : wc.branchLabel}`;
+    const summary = `${toCommit.length} item(ns) → ${wc.isMainline ? mainlineLabel : wc.branchLabel}`;
     if (confirmServerOps) {
       const ok = await confirm({
         title: "Enviar ao servidor?",
         message: wc.isMainline
-          ? `ATENÇÃO: você está commitando DIRETO na linha principal (trunk).\nIsso publica para todos imediatamente.\n\n${summary}`
+          ? `ATENÇÃO: você está commitando DIRETO na ${mainlineLabel}.\nIsso publica para todos imediatamente.\n\n${summary}`
           : summary,
         confirmLabel: "Commitar",
         danger: wc.isMainline,
@@ -368,7 +372,7 @@ function Changes({ wc }: { wc: WorkingCopy }) {
             <div className="mb-2 flex items-start gap-2 rounded-lg border border-warn/30 bg-warn/10 px-3 py-2 text-[11px] leading-snug text-warn">
               <ShieldAlert className="mt-0.5 size-3.5 shrink-0" />
               <span>
-                Você está na <b>linha principal (trunk)</b>. O commit publica para todos. Para isolar,
+                Você está na <b>{mainlineLabel}</b>. O commit publica para todos. Para isolar,
                 crie uma branch.
               </span>
             </div>
