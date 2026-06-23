@@ -199,7 +199,7 @@ pub async fn get_status(
     state: State<'_, AppState>,
 ) -> Result<StatusResult, String> {
     let mode = mode_of(&state);
-    let mut args = vec!["status", "--xml"];
+    let mut args = vec!["status", "--xml", "--non-interactive"];
     if remote {
         args.push("-u");
     }
@@ -259,7 +259,7 @@ pub async fn diff_revision(
     }
     let mode = mode_of(&state);
     let change = format!("-c{}", revision.trim());
-    let mut args: Vec<&str> = vec!["diff", "--internal-diff", change.as_str()];
+    let mut args: Vec<&str> = vec!["diff", "--internal-diff", "--non-interactive", change.as_str()];
     if ignore_ws {
         args.push("-x");
         args.push("-w");

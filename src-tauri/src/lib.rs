@@ -107,10 +107,18 @@ fn install_panic_hook() {
         if let Some(base) = dirs::cache_dir() {
             let dir = base.join("subversa");
             let _ = std::fs::create_dir_all(&dir);
+            let path = dir.join("crash.log");
+            // Evita crescer sem limite: passando de ~256 KB, recomeça o arquivo.
+            const MAX_CRASH_LOG: u64 = 256 * 1024;
+            let truncate = std::fs::metadata(&path)
+                .map(|m| m.len() > MAX_CRASH_LOG)
+                .unwrap_or(false);
             if let Ok(mut f) = std::fs::OpenOptions::new()
                 .create(true)
-                .append(true)
-                .open(dir.join("crash.log"))
+                .write(true)
+                .append(!truncate)
+                .truncate(truncate)
+                .open(&path)
             {
                 use std::io::Write;
                 let ts = std::time::SystemTime::now()
