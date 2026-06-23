@@ -23,10 +23,27 @@ function resolveTheme(theme: AppConfig["theme"]): "dark" | "light" {
   return theme;
 }
 
+// Listener único do tema "system": acompanha a troca claro/escuro do SO em
+// runtime, registrado só enquanto o tema for "system".
+let mql: MediaQueryList | null = null;
+let mqlHandler: (() => void) | null = null;
+
 function paintTheme(theme: AppConfig["theme"]) {
   const resolved = resolveTheme(theme);
   document.documentElement.classList.toggle("theme-light", resolved === "light");
   document.documentElement.style.colorScheme = resolved;
+
+  if (typeof window !== "undefined" && window.matchMedia) {
+    if (!mql) mql = window.matchMedia("(prefers-color-scheme: light)");
+    if (mqlHandler) {
+      mql.removeEventListener("change", mqlHandler);
+      mqlHandler = null;
+    }
+    if (theme === "system") {
+      mqlHandler = () => paintTheme("system");
+      mql.addEventListener("change", mqlHandler);
+    }
+  }
 }
 
 export const useConfigStore = create<ConfigState>((set, get) => ({
@@ -47,6 +64,10 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
     try {
       await api.saveConfig(next);
     } catch (e) {
+      // Persistência falhou: reverte o estado em memória e o tema para não
+      // divergir do que está em disco.
+      set({ config: current });
+      paintTheme(current.theme);
       toast.error("Não consegui salvar a configuração", String(e));
     }
   },

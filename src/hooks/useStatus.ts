@@ -10,6 +10,9 @@ export function useStatus(path: string | undefined) {
   const [error, setError] = useState<string | null>(null);
 
   const aliveRef = useRef(true);
+  // Token de requisição: entre dois reload() do mesmo path (ex.: local e depois
+  // remoto), só o mais recente pode escrever — o último a iniciar vence.
+  const reqRef = useRef(0);
   useEffect(() => {
     aliveRef.current = true;
     return () => {
@@ -20,15 +23,17 @@ export function useStatus(path: string | undefined) {
   const reload = useCallback(
     async (remote = false) => {
       if (!path) return;
+      const req = ++reqRef.current;
+      const ok = () => aliveRef.current && req === reqRef.current;
       setLoading(true);
       setError(null);
       try {
         const r = await api.getStatus(path, remote);
-        if (aliveRef.current) setData(r);
+        if (ok()) setData(r);
       } catch (e) {
-        if (aliveRef.current) setError(String(e));
+        if (ok()) setError(String(e));
       } finally {
-        if (aliveRef.current) setLoading(false);
+        if (ok()) setLoading(false);
       }
     },
     [path],

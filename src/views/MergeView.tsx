@@ -107,7 +107,8 @@ function Merge({ wc }: { wc: WorkingCopy }) {
   const [branchUrl, setBranchUrl] = useState(wc.isMainline ? "" : wc.url);
 
   const ensureClean = async (): Promise<boolean> => {
-    const st = await api.getStatus(wc.path, false);
+    const st = await tryRun(() => api.getStatus(wc.path, false), "Falha ao ler o status");
+    if (!st) return false;
     if (st.entries.some((e: StatusEntry) => DIRTY.includes(e.item))) {
       toast.error("Working copy com alterações locais", "Commite ou reverta antes do merge.");
       return false;
@@ -120,7 +121,7 @@ function Merge({ wc }: { wc: WorkingCopy }) {
     if (!mainlineUrl) return;
     setBusy("preview");
     setOutput("");
-    const o = await tryRun(() => api.merge(wc.path, mainlineUrl, true, false));
+    const o = await tryRun(() => api.merge(wc.path, mainlineUrl, true, false), "Falha na pré-visualização");
     setBusy(null);
     if (o) {
       setOutput(o.stdout || o.stderr || "Nada para receber — já está em dia.");
@@ -148,7 +149,8 @@ function Merge({ wc }: { wc: WorkingCopy }) {
       setOutput(o.stdout + (o.stderr ? "\n" + o.stderr : ""));
       if (!o.success) return reportOutput(o, "");
 
-      const st = await api.getStatus(wc.path, false);
+      const st = await tryRun(() => api.getStatus(wc.path, false), "Falha ao ler o status");
+      if (!st) return;
       if (st.entries.some((e) => e.item === "conflicted")) {
         toast.warn("O merge gerou conflitos", "Resolva na aba Alterações e commite.");
         await refreshOne(wc.path);
@@ -160,7 +162,7 @@ function Merge({ wc }: { wc: WorkingCopy }) {
         toast.success("Já estava em dia", "Nada para sincronizar.");
         return;
       }
-      const c = await api.commit([wc.path], "sync: linha principal -> branch");
+      const c = await api.commit([wc.path], "sync: trunk → branch");
       if (c.success) {
         const rev = extractRevision(c.stdout);
         toast.success("Branch sincronizada", rev ? `r${rev}` : undefined);
@@ -205,8 +207,8 @@ function Merge({ wc }: { wc: WorkingCopy }) {
       await refreshOne(wc.path);
       if (!o.success) return reportOutput(o, "");
 
-      const st = await api.getStatus(wc.path, false);
-      if (st.entries.some((e) => e.item === "conflicted")) {
+      const st = await tryRun(() => api.getStatus(wc.path, false));
+      if (st?.entries.some((e) => e.item === "conflicted")) {
         toast.warn("Conflitos na reintegração", "Resolva na aba Alterações e commite.");
       } else {
         toast.success("Branch mesclada no trunk", "Revise e commite na aba Alterações.");
@@ -234,8 +236,8 @@ function Merge({ wc }: { wc: WorkingCopy }) {
       if (!o.success) return reportOutput(o, "");
       if (!dry) {
         await refreshOne(wc.path);
-        const st = await api.getStatus(wc.path, false);
-        if (st.entries.some((e) => e.item === "conflicted"))
+        const st = await tryRun(() => api.getStatus(wc.path, false));
+        if (st?.entries.some((e) => e.item === "conflicted"))
           toast.warn("Conflitos na reintegração", "Resolva na aba Alterações e commite.");
         else toast.success("Branch mesclada", "Revise e commite na aba Alterações.");
         setView("changes");

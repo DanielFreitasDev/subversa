@@ -20,7 +20,14 @@ export function reportOutput(
 
 /** Extrai o número de revisão de uma saída de commit/copy/merge. */
 export function extractRevision(stdout: string): string | null {
-  const m = stdout.match(/(\d+)\.?\s*$/m) || stdout.match(/revis[ãa]o\s+(\d+)/i);
+  // Prioriza a frase explícita ("Committed revision N" / "Revisão N enviada");
+  // só então cai para "número no fim". O fallback é sem a flag `m`, para casar o
+  // fim do texto inteiro — e não uma linha intermediária que por acaso termine
+  // em dígito (ex.: "Enviando .../getran160" sequestrava a revisão).
+  const m =
+    stdout.match(/[Cc]ommitted revision\s+(\d+)/) ||
+    stdout.match(/revis[ãa]o\s+(\d+)/i) ||
+    stdout.match(/(\d+)\.?\s*$/);
   return m ? m[1] : null;
 }
 

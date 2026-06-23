@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   AlertTriangle,
   CloudDownload,
@@ -31,6 +31,13 @@ import { useWorkspaceStore } from "@/store/workspace";
 import { NeedWorkingCopy } from "./_shared";
 
 const COMMITTABLE = ["modified", "added", "deleted", "replaced", "missing", "conflicted"];
+
+/** O que pode ser marcado para commit: mudanças versionadas, novos arquivos e
+ *  mudanças só de propriedade. (Conflitos aparecem na lista, mas não entram por
+ *  padrão e o commit é bloqueado até resolver.) */
+function isSelectable(e: StatusEntry): boolean {
+  return COMMITTABLE.includes(e.item) || e.item === "unversioned" || e.props === "modified";
+}
 
 function StatusRow({
   entry,
@@ -142,20 +149,36 @@ function Changes({ wc }: { wc: WorkingCopy }) {
   const [committing, setCommitting] = useState(false);
   const [checkingServer, setCheckingServer] = useState(false);
   const [conflictPath, setConflictPath] = useState<string | null>(null);
+  // Semeia a seleção só uma vez por WC (o componente remonta via key={wc.path}).
+  const seededRef = useRef(false);
 
   const entries = data?.entries ?? [];
 
-  // Marca por padrão tudo que é "committável".
+  // 1ª carga: marca por padrão o que é committável (menos conflitos e novos
+  // arquivos). Em reloads (checkServer, pós-resolução) preserva a seleção do
+  // usuário, só descartando itens que sumiram da lista.
   useEffect(() => {
     if (!data) return;
-    const def = new Set<string>();
-    for (const e of data.entries) {
-      if (COMMITTABLE.includes(e.item) || e.props === "modified" || e.props === "conflicted") {
-        def.add(e.path);
+    const present = new Set(data.entries.map((e) => e.path));
+    setChecked((prev) => {
+      if (seededRef.current) {
+        const kept = new Set<string>();
+        for (const p of prev) if (present.has(p)) kept.add(p);
+        return kept;
       }
-    }
-    setChecked(def);
-    setHighlight((h) => h ?? data.entries.find((e) => def.has(e.path))?.path ?? data.entries[0]?.path ?? null);
+      seededRef.current = true;
+      const def = new Set<string>();
+      for (const e of data.entries) {
+        if (isSelectable(e) && e.item !== "unversioned" && e.item !== "conflicted") {
+          def.add(e.path);
+        }
+      }
+      return def;
+    });
+    // Mantém o destaque se ainda existir; senão cai para o primeiro item.
+    setHighlight((h) =>
+      (h && present.has(h) ? h : null) ?? data.entries[0]?.path ?? null,
+    );
   }, [data]);
 
   // Carrega o diff do arquivo destacado.
@@ -177,9 +200,7 @@ function Changes({ wc }: { wc: WorkingCopy }) {
   }, [highlight, wc.path, ignoreWs]);
 
   const selectedEntries = entries.filter((e) => checked.has(e.path));
-  const selectableEntries = entries.filter(
-    (e) => COMMITTABLE.includes(e.item) || e.item === "unversioned" || e.props === "modified",
-  );
+  const selectableEntries = entries.filter(isSelectable);
   const allSelected = selectableEntries.length > 0 && selectableEntries.every((e) => checked.has(e.path));
   const hasConflicts = entries.some((e) => e.item === "conflicted" || e.treeConflicted);
 
@@ -261,8 +282,6 @@ function Changes({ wc }: { wc: WorkingCopy }) {
         const rev = extractRevision(out.stdout);
         toast.success("Commit enviado", rev ? `Revisão r${rev}` : undefined);
         setMessage("");
-        await reload(false);
-        await refreshOne(wc.path);
       } else {
         reportOutput(out, "");
       }
@@ -270,6 +289,10 @@ function Changes({ wc }: { wc: WorkingCopy }) {
       toast.error("Falha no commit", String(e));
     } finally {
       setCommitting(false);
+      // add/remove/commit podem ter mexido no disco mesmo em caso de erro:
+      // ressincroniza a lista para a UI não ficar desatualizada.
+      await reload(false);
+      await refreshOne(wc.path);
     }
   };
 
@@ -415,11 +438,15 @@ function Changes({ wc }: { wc: WorkingCopy }) {
               externalTool={tool}
               onOpenExternal={() => tryRun(() => api.openExternalDiff(wc.path, tool), "Não consegui abrir o diff externo")}
               onExpandContext={
-                highlight
+                highlight &&
+                highlightEntry &&
+                !["added", "unversioned", "replaced"].includes(highlightEntry.item)
                   ? async () => {
                       // Contexto não exibido = linhas inalteradas → vêm da BASE (svn cat).
                       const t = await api.catFile(highlight);
-                      return { side: "old" as const, lines: t.split("\n") };
+                      const lines = t.split("\n");
+                      if (lines[lines.length - 1] === "") lines.pop(); // descarta a "linha" vazia final
+                      return { side: "old" as const, lines };
                     }
                   : undefined
               }

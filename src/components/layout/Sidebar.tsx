@@ -80,7 +80,7 @@ export function Sidebar() {
     if (typeof dir === "string") {
       setBaseDir(dir);
       await saveConfig({ baseDir: dir });
-      refresh();
+      refresh(dir);
     }
   };
 

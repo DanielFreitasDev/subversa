@@ -13,11 +13,15 @@ interface WorkspaceState {
   error: string | null;
 
   setBaseDir: (dir: string) => void;
-  refresh: () => Promise<void>;
+  refresh: (base?: string) => Promise<void>;
   refreshOne: (path: string) => Promise<void>;
   select: (path: string | null) => void;
   selected: () => WorkingCopy | null;
 }
+
+// Época de detecção: refreshes concorrentes (boot, troca de pasta, botões)
+// podem resolver fora de ordem; só o mais recente pode escrever o resultado.
+let refreshEpoch = 0;
 
 export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   baseDir: "",
@@ -28,13 +32,15 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
 
   setBaseDir: (dir) => set({ baseDir: dir }),
 
-  refresh: async () => {
-    const base = get().baseDir;
-    if (!base) return;
+  refresh: async (base) => {
+    const target = (base ?? get().baseDir).trim();
+    if (!target) return;
+    const epoch = ++refreshEpoch;
     set({ loading: true, error: null });
     try {
-      const wcs = await api.detectWorkingCopies(base);
-      // mantém a seleção se ainda existir; senão seleciona a primeira.
+      const wcs = await api.detectWorkingCopies(target);
+      if (epoch !== refreshEpoch) return; // um refresh mais novo assumiu
+      // mantém a seleção se ainda existir (relida após o await); senão a primeira.
       const prev = get().selectedPath;
       const stillThere = wcs.some((w) => w.path === prev);
       set({
@@ -43,6 +49,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         selectedPath: stillThere ? prev : wcs[0]?.path ?? null,
       });
     } catch (e) {
+      if (epoch !== refreshEpoch) return;
       set({ loading: false, error: String(e) });
     }
   },
@@ -59,7 +66,12 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     }
   },
 
-  select: (path) => set({ selectedPath: path }),
+  select: (path) =>
+    set((s) =>
+      path == null || s.workingCopies.some((w) => w.path === path)
+        ? { selectedPath: path }
+        : s,
+    ),
 
   selected: () => {
     const { workingCopies, selectedPath } = get();

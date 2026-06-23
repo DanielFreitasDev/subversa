@@ -26,6 +26,9 @@ export const useConfirmStore = create<ConfirmState>((set, get) => ({
   pending: null,
   ask: (opts) =>
     new Promise<boolean>((resolve) => {
+      // Se já houver um confirm aberto, resolve o anterior como cancelado para
+      // não deixar aquele `await confirm()` pendente para sempre.
+      get().pending?.resolve(false);
       set({ pending: { ...opts, resolve } });
     }),
   resolve: (ok) => {

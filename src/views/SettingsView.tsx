@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
+import { getVersion } from "@tauri-apps/api/app";
 import {
   Database,
   FolderOpen,
@@ -76,18 +77,23 @@ export function SettingsView() {
   const [newRoot, setNewRoot] = useState("");
   const [testing, setTesting] = useState(false);
   const [version, setVersion] = useState("");
+  const [appVersion, setAppVersion] = useState("");
+  const [projectsDirty, setProjectsDirty] = useState(false);
 
   useEffect(() => {
     if (config) {
       setHost(config.host);
       setTool(config.externalDiffTool);
-      setProjects(config.projects);
       setRepoBase(config.repoBase);
+      // Não sobrescreve edições de projetos ainda não salvas (ex.: ao salvar o
+      // tema, o config muda e este efeito dispararia, descartando-as).
+      if (!projectsDirty) setProjects(config.projects);
     }
-  }, [config]);
+  }, [config, projectsDirty]);
 
   useEffect(() => {
     api.svnVersion().then(setVersion).catch(() => setVersion(""));
+    getVersion().then(setAppVersion).catch(() => setAppVersion(""));
   }, []);
 
   if (!config) return null;
@@ -97,7 +103,7 @@ export function SettingsView() {
     if (typeof dir === "string") {
       setBaseDir(dir);
       await save({ baseDir: dir });
-      refresh();
+      refresh(dir);
     }
   };
 
@@ -110,11 +116,34 @@ export function SettingsView() {
     if (out) reportOutput(out, "Conexão OK", "O servidor respondeu.");
   };
 
-  const updateProject = (i: number, patch: Partial<Project>) =>
+  const updateProject = (i: number, patch: Partial<Project>) => {
+    setProjectsDirty(true);
     setProjects((ps) => ps.map((p, j) => (j === i ? { ...p, ...patch } : p)));
+  };
+
+  const removeProject = (i: number) => {
+    setProjectsDirty(true);
+    setProjects((ps) => ps.filter((_, j) => j !== i));
+  };
+
+  const addProject = () => {
+    setProjectsDirty(true);
+    setProjects((ps) => [
+      ...ps,
+      { key: "novo", name: "Novo projeto", description: "", url: config.repoRoots[0] ?? "" },
+    ]);
+  };
 
   const saveProjects = async () => {
+    const bad = projects.find(
+      (p) => p.url.trim() && !/^(svn\+ssh|https?|svn|file):\/\//.test(p.url.trim()),
+    );
+    if (bad) {
+      toast.warn("URL de projeto inválida", `"${bad.name || bad.key}" precisa de um esquema (svn+ssh://…).`);
+      return;
+    }
     await save({ projects });
+    setProjectsDirty(false);
     toast.success("Projetos salvos");
   };
 
@@ -123,8 +152,16 @@ export function SettingsView() {
   const addRoot = async () => {
     const v = newRoot.trim();
     if (!v) return;
+    if (!v.includes("://") && !repoBase.trim()) {
+      toast.warn("Defina a URL base primeiro", "Ou informe a URL completa (svn+ssh://…).");
+      return;
+    }
     const base = repoBase.endsWith("/") ? repoBase : `${repoBase}/`;
     const url = v.includes("://") ? v : `${base}${v.replace(/^\/+/, "")}`;
+    if (!/^(svn\+ssh|https?|svn|file):\/\//.test(url)) {
+      toast.warn("URL inválida", "Use um esquema como svn+ssh://, https:// ou file://.");
+      return;
+    }
     if (roots.includes(url)) {
       toast.warn("Localização já cadastrada");
       return;
@@ -171,7 +208,11 @@ export function SettingsView() {
             <Input
               value={host}
               onChange={(e) => setHost(e.target.value)}
-              onBlur={() => host !== config.host && save({ host })}
+              onBlur={() => {
+                const h = host.trim();
+                if (h && h !== config.host) save({ host: h });
+                else if (!h) setHost(config.host);
+              }}
               className="w-64 font-mono text-[12px]"
             />
           </Row>
@@ -283,7 +324,7 @@ export function SettingsView() {
                     className="h-8 flex-1 text-[12px]"
                   />
                   <button
-                    onClick={() => setProjects((ps) => ps.filter((_, j) => j !== i))}
+                    onClick={() => removeProject(i)}
                     className="flex size-8 shrink-0 items-center justify-center rounded-md text-faint hover:bg-conflict/15 hover:text-conflict"
                   >
                     <Trash2 className="size-4" />
@@ -308,12 +349,7 @@ export function SettingsView() {
             <Button
               variant="ghost"
               size="sm"
-              onClick={() =>
-                setProjects((ps) => [
-                  ...ps,
-                  { key: "novo", name: "Novo projeto", description: "", url: config.repoRoots[0] ?? "" },
-                ])
-              }
+              onClick={addProject}
             >
               <Plus className="size-4" />
               Adicionar
@@ -351,7 +387,7 @@ export function SettingsView() {
           <div className="min-w-0 flex-1">
             <div className="flex items-baseline gap-2">
               <span className="text-[14px] font-semibold text-ink">Subversa</span>
-              <span className="font-mono text-[11px] text-faint">1.0.0</span>
+              {appVersion && <span className="font-mono text-[11px] text-faint">{appVersion}</span>}
             </div>
             <div className="text-[11px] text-faint">Cliente SVN moderno{version && ` · svn ${version}`}</div>
           </div>

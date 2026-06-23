@@ -17,7 +17,7 @@ export function ConfirmDialog() {
 
   const open = !!pending;
   const needsText = pending?.requireText;
-  const unlocked = !needsText || text.trim() === needsText;
+  const unlocked = !needsText || text.trim() === needsText.trim();
 
   return (
     <Modal

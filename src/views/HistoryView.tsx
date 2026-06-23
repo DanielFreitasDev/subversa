@@ -65,7 +65,7 @@ function History_({ wc }: { wc: WorkingCopy }) {
         </div>
       }
       listFooter={
-        entries.length >= limit ? (
+        entries.length >= limit && !loading ? (
           <button
             onClick={() => setLimit((l) => l + 50)}
             className="w-full py-3 text-center text-[12px] text-brand hover:bg-panel-2"
