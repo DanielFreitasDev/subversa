@@ -434,7 +434,7 @@ export function FileBlock({
       ) : (
         <div className="overflow-x-auto bg-panel">
           {file.hunks.map((hunk, hi) => (
-            <Fragment key={hi}>
+            <Fragment key={hunk.header}>
               {renderTopGap(gaps[hi], hunk.header)}
               {mode === "split"
                 ? (() => {

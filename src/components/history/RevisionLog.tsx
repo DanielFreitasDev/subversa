@@ -103,7 +103,11 @@ export function RevisionDetail({
         sel === "all" ? `${target.baseUrl}/${file.path}` : `${target.repoRoot}${sel.path}`;
       return api
         .catFile(url, entry.revision)
-        .then((t) => ({ side: "new" as const, lines: t.split("\n") }))
+        .then((t) => {
+          const lines = t.split("\n");
+          if (lines[lines.length - 1] === "") lines.pop(); // descarta a "linha" vazia final
+          return { side: "new" as const, lines };
+        })
         .catch(() => null);
     },
     [sel, target.baseUrl, target.repoRoot, entry.revision],

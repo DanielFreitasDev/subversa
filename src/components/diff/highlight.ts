@@ -14,6 +14,10 @@ import type { Segment } from "./rows";
 
 const lowlight = createLowlight(common);
 
+/** Teto de caracteres por lado: acima disto, não realça (evita travar o lowlight
+ *  com poucas linhas porém gigantes — minificados, dumps base64, etc.). */
+const MAX_HIGHLIGHT_CHARS = 400_000;
+
 /** Token de sintaxe: trecho de texto e sua classe `hljs-*` (vazia = sem cor). */
 interface Token {
   text: string;
@@ -101,6 +105,11 @@ export function tokenizeFile(file: DiffFile): Map<DiffLine, Token[]> | null {
     }
   }
 
+  const chars =
+    oldLines.reduce((n, l) => n + l.content.length, 0) +
+    newLines.reduce((n, l) => n + l.content.length, 0);
+  if (chars > MAX_HIGHLIGHT_CHARS) return null;
+
   try {
     const oldTok = highlightLines(oldLines.map((l) => l.content), lang);
     const newTok = highlightLines(newLines.map((l) => l.content), lang);
@@ -130,6 +139,26 @@ export function spansForPlainLine(content: string, path: string): Span[] {
       : plain;
   } catch {
     return plain;
+  }
+}
+
+/**
+ * Realça um arquivo inteiro (texto puro, fora do diff) → spans por linha.
+ * Tokeniza tudo de uma vez (preserva strings/comentários multi-linha, ao
+ * contrário de realçar linha a linha). `null` se a linguagem é desconhecida, o
+ * arquivo é grande demais ou o highlight falha — aí o chamador exibe texto puro.
+ */
+export function tokenizeText(text: string, path: string): Span[][] | null {
+  const lang = langFromPath(path);
+  if (!lang) return null;
+  if (text.length > MAX_HIGHLIGHT_CHARS) return null;
+  try {
+    const lines = text.split("\n");
+    return highlightLines(lines, lang).map((toks) =>
+      toks.map((t) => ({ text: t.text, className: t.className, changed: false })),
+    );
+  } catch {
+    return null;
   }
 }
 

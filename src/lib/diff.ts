@@ -50,12 +50,18 @@ export function parseUnifiedDiff(text: string): DiffFile[] {
     }
     if (/^=+$/.test(line)) continue;
     if (!current) {
-      // diff sem cabeçalho "Index:" — cria um arquivo genérico.
+      // diff sem cabeçalho "Index:" (raro): inicia um arquivo genérico, cujo
+      // nome é ajustado quando vier a linha "+++".
       if (line.startsWith("--- ") || line.startsWith("@@")) pushFile("(alterações)");
       else continue;
     }
     const file = current!;
 
+    // Aproveita o "+++" para nomear o arquivo do fallback (sem cabeçalho Index).
+    if (line.startsWith("+++ ") && file.path === "(alterações)") {
+      const p = line.slice(4).split("\t")[0].replace(/^[ab]\//, "").trim();
+      if (p && p !== "/dev/null") file.path = p;
+    }
     if (line.startsWith("--- ") || line.startsWith("+++ ")) continue;
     if (/Cannot display:|binary type|arquivo marcado como/i.test(line)) {
       file.binary = true;

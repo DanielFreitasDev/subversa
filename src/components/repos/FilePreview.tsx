@@ -7,12 +7,12 @@ import { useEffect, useMemo, useState } from "react";
 import { Eye, FileText, ServerCrash, Users } from "lucide-react";
 
 import * as api from "@/lib/api";
-import { spansForPlainLine } from "@/components/diff/highlight";
+import { tokenizeText, type Span } from "@/components/diff/highlight";
 import { Empty } from "@/components/ui/Empty";
 import { Segmented } from "@/components/ui/Segmented";
 import { Loading } from "@/components/ui/Spinner";
 import type { BlameLine } from "@/lib/types";
-import { decodeUrl } from "@/lib/utils";
+import { decodeUrlSafe } from "@/lib/utils";
 import type { RepoNode } from "@/store/repoBrowser";
 
 /** Acima disto não realça/rola tudo (evita travar a UI com arquivos enormes). */
@@ -20,8 +20,7 @@ const MAX_LINES = 4000;
 
 type Tab = "content" | "blame";
 
-function HighlightedLine({ content, path }: { content: string; path: string }) {
-  const spans = useMemo(() => spansForPlainLine(content, path), [content, path]);
+function SpanRow({ spans }: { spans: Span[] }) {
   return (
     <>
       {spans.map((s, i) => (
@@ -70,6 +69,12 @@ export function FilePreview({ node }: { node: RepoNode }) {
   }, [node.url, tab]);
 
   const lines = useMemo(() => (text != null ? text.split("\n") : []), [text]);
+  // Realça o arquivo inteiro de uma vez (preserva strings/comentários
+  // multi-linha) em vez de linha a linha; `null` cai para texto puro.
+  const highlighted = useMemo(
+    () => (text != null ? tokenizeText(text, node.name) : null),
+    [text, node.name],
+  );
   const truncated = tab === "content" ? lines.length > MAX_LINES : (blame?.length ?? 0) > MAX_LINES;
 
   return (
@@ -77,8 +82,8 @@ export function FilePreview({ node }: { node: RepoNode }) {
       <div className="flex items-center justify-between gap-2 border-b border-line px-4 py-2.5">
         <div className="flex min-w-0 items-center gap-2">
           <FileText className="size-4 shrink-0 text-faint" />
-          <span className="truncate text-[13px] font-medium text-ink" title={decodeUrl(node.url)}>
-            {decodeUrl(node.name)}
+          <span className="truncate text-[13px] font-medium text-ink" title={decodeUrlSafe(node.url)}>
+            {decodeUrlSafe(node.name)}
           </span>
         </div>
         <Segmented<Tab>
@@ -105,7 +110,7 @@ export function FilePreview({ node }: { node: RepoNode }) {
                   {i + 1}
                 </span>
                 <code className="whitespace-pre px-2 text-ink">
-                  <HighlightedLine content={ln} path={node.name} />
+                  {highlighted ? <SpanRow spans={highlighted[i] ?? []} /> : ln}
                 </code>
               </div>
             ))}
