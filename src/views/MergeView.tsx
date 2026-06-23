@@ -26,6 +26,11 @@ import { NeedWorkingCopy } from "./_shared";
 
 const DIRTY = ["modified", "added", "deleted", "replaced", "conflicted", "missing"];
 
+/** Item "sujo": mudança de conteúdo, conflito (texto ou árvore) ou só de propriedade. */
+function isDirty(e: StatusEntry): boolean {
+  return DIRTY.includes(e.item) || e.props === "modified" || e.treeConflicted;
+}
+
 function colorForLine(line: string): string {
   const c = line.trim()[0];
   if (c === "U" || c === "G") return "text-info";
@@ -109,7 +114,7 @@ function Merge({ wc }: { wc: WorkingCopy }) {
   const ensureClean = async (): Promise<boolean> => {
     const st = await tryRun(() => api.getStatus(wc.path, false), "Falha ao ler o status");
     if (!st) return false;
-    if (st.entries.some((e: StatusEntry) => DIRTY.includes(e.item))) {
+    if (st.entries.some(isDirty)) {
       toast.error("Working copy com alterações locais", "Commite ou reverta antes do merge.");
       return false;
     }
@@ -235,7 +240,6 @@ function Merge({ wc }: { wc: WorkingCopy }) {
       setOutput(o.stdout + (o.stderr ? "\n" + o.stderr : ""));
       if (!o.success) return reportOutput(o, "");
       if (!dry) {
-        await refreshOne(wc.path);
         const st = await tryRun(() => api.getStatus(wc.path, false));
         if (st?.entries.some((e) => e.item === "conflicted"))
           toast.warn("Conflitos na reintegração", "Resolva na aba Alterações e commite.");
@@ -244,6 +248,9 @@ function Merge({ wc }: { wc: WorkingCopy }) {
       }
     } finally {
       setBusy(null);
+      // Após uma execução real, ressincroniza a WC mesmo em falha — o update/merge
+      // pode ter tocado arquivos (espelha o comportamento do runPublish).
+      if (!dry) await refreshOne(wc.path);
     }
   };
 
