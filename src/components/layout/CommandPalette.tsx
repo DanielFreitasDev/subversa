@@ -224,11 +224,16 @@ export function CommandPalette() {
   }, [commands, query]);
 
   useEffect(() => {
-    if (open) {
-      setQuery("");
-      setActive(0);
-      setTimeout(() => inputRef.current?.focus(), 30);
-    }
+    if (!open) return;
+    setQuery("");
+    setActive(0);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const t = setTimeout(() => inputRef.current?.focus(), 30);
+    return () => {
+      clearTimeout(t);
+      document.body.style.overflow = prev;
+    };
   }, [open]);
 
   useEffect(() => {

@@ -101,6 +101,7 @@ export function TopBar() {
         )}
         <button
           onClick={togglePalette}
+          aria-label="Abrir paleta de comandos (Ctrl+K)"
           className="flex h-8 items-center gap-2 rounded-lg border border-line bg-panel-2 pl-2.5 pr-2 text-[13px] text-muted transition-colors hover:text-ink"
         >
           <Search className="size-3.5" />

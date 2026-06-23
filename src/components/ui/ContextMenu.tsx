@@ -9,7 +9,7 @@
  *   <ContextMenu menu={ctx.menu} onClose={ctx.close} />
  */
 
-import { useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
 
@@ -39,13 +39,13 @@ export interface ContextMenuState {
 /** Estado + helpers para abrir/fechar o menu a partir de um evento. */
 export function useContextMenu() {
   const [menu, setMenu] = useState<ContextMenuState | null>(null);
-  const open = (e: React.MouseEvent, items: MenuItem[]) => {
+  const open = useCallback((e: React.MouseEvent, items: MenuItem[]) => {
     e.preventDefault();
     e.stopPropagation();
     if (items.length === 0) return;
     setMenu({ x: e.clientX, y: e.clientY, items });
-  };
-  const close = () => setMenu(null);
+  }, []);
+  const close = useCallback(() => setMenu(null), []);
   return { menu, open, close };
 }
 

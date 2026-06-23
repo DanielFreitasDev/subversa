@@ -208,7 +208,11 @@ export function RepoOpDialog() {
         if (dstParent !== parentOf(node.url)) await refresh(dstParent);
         select({ url: url.trim(), name: baseName(url.trim()), kind: node.kind });
       } else if (kind === "branchTag") {
-        await refresh(`${activeLocation}/${tagMode === "tag" ? "tags" : "branches"}`);
+        // Recarrega o pai real do nó criado e o seleciona (o destino pode estar
+        // vários níveis abaixo de branches/tags).
+        const created = url.trim();
+        await refresh(parentOf(created));
+        select({ url: created, name: baseName(created), kind: "dir" });
       }
       closeDialog();
     } finally {

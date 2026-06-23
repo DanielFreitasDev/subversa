@@ -50,6 +50,16 @@ export function Modal({
     return () => window.removeEventListener("keydown", onKey);
   }, [open, locked, onClose]);
 
+  // Trava o scroll do body enquanto o modal está aberto.
+  useEffect(() => {
+    if (!open) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [open]);
+
   return createPortal(
     <AnimatePresence>
       {open && (

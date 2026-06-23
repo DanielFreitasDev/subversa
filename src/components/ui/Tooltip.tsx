@@ -1,4 +1,4 @@
-import { cloneElement, useRef, useState } from "react";
+import { cloneElement, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
 
@@ -19,6 +19,9 @@ export function Tooltip({
   const [pos, setPos] = useState({ x: 0, y: 0 });
   const ref = useRef<HTMLElement | null>(null);
   const timer = useRef<number | undefined>(undefined);
+
+  // Limpa o timer pendente ao desmontar (evita setOpen após o unmount).
+  useEffect(() => () => window.clearTimeout(timer.current), []);
 
   const show = () => {
     timer.current = window.setTimeout(() => {
@@ -55,6 +58,9 @@ export function Tooltip({
     onMouseLeave: hide,
     onFocus: show,
     onBlur: hide,
+    // Acessibilidade: usa o texto do tooltip como rótulo se o filho não tiver um.
+    "aria-label":
+      children.props["aria-label"] ?? (typeof label === "string" ? label : undefined),
   });
 
   return (

@@ -75,13 +75,16 @@ export function DiffViewer({
     return <div className="px-3 py-6 text-center text-sm text-faint">Sem diferenças.</div>;
   }
 
-  const allCollapsed = files.length > 0 && files.every((f) => collapsed.has(f.path));
+  // Chave por índice+path (igual à key do bloco): dois arquivos de mesmo path no
+  // mesmo diff (fallback "(alterações)") não colapsam juntos.
+  const keyOf = (path: string, i: number) => `${i}-${path}`;
+  const allCollapsed = files.length > 0 && files.every((f, i) => collapsed.has(keyOf(f.path, i)));
   const toggleCollapseAll = () =>
-    setCollapsed(allCollapsed ? new Set() : new Set(files.map((f) => f.path)));
-  const toggleOne = (path: string) =>
+    setCollapsed(allCollapsed ? new Set() : new Set(files.map((f, i) => keyOf(f.path, i))));
+  const toggleOne = (key: string) =>
     setCollapsed((prev) => {
       const next = new Set(prev);
-      next.has(path) ? next.delete(path) : next.add(path);
+      next.has(key) ? next.delete(key) : next.add(key);
       return next;
     });
 
@@ -178,19 +181,22 @@ export function DiffViewer({
         </div>
       </div>
 
-      {files.map((file, i) => (
-        <FileBlock
-          key={`${i}-${file.path}`}
-          file={file}
-          index={i}
-          mode={mode}
-          collapsed={collapsed.has(file.path)}
-          onToggleCollapse={() => toggleOne(file.path)}
-          externalTool={externalTool}
-          onOpenExternal={onOpenExternal}
-          onExpandContext={onExpandContext}
-        />
-      ))}
+      {files.map((file, i) => {
+        const k = keyOf(file.path, i);
+        return (
+          <FileBlock
+            key={k}
+            file={file}
+            index={i}
+            mode={mode}
+            collapsed={collapsed.has(k)}
+            onToggleCollapse={() => toggleOne(k)}
+            externalTool={externalTool}
+            onOpenExternal={onOpenExternal}
+            onExpandContext={onExpandContext}
+          />
+        );
+      })}
     </div>
   );
 }
