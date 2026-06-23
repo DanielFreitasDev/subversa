@@ -1,6 +1,9 @@
 <div align="center">
 
-# Subversa
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/img/logo-horizontal-dark.png">
+  <img src="docs/img/logo-horizontal-light.png" alt="Subversa" width="480">
+</picture>
 
 ### Cliente SVN de desktop moderno — no espírito do TortoiseSVN, com um design totalmente repaginado
 
