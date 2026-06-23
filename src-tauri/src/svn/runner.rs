@@ -1,12 +1,19 @@
 //! Execução de processos `svn` com o ambiente de autenticação correto.
 
 use std::path::Path;
+use std::time::Duration;
 
 use tokio::process::Command;
+use tokio::time::timeout;
 
 use super::conn;
 use super::parser::hint_from_stderr;
 use super::types::{CommandOutput, SshMode};
+
+/// Teto de segurança para qualquer operação `svn`: generoso a ponto de nunca
+/// atingir uma operação legítima (checkout grande etc.), mas evita travar a UI
+/// para sempre se o SSH conectar e nunca responder.
+const SVN_TIMEOUT: Duration = Duration::from_secs(30 * 60);
 
 /// Monta uma string legível do comando (para o modo verbose da UI).
 pub fn display_command(args: &[&str]) -> String {
@@ -38,10 +45,17 @@ pub async fn run(args: &[&str], cwd: Option<&Path>, mode: SshMode) -> Result<Com
 
     cmd.kill_on_drop(true);
 
-    let output = cmd
-        .output()
-        .await
-        .map_err(|e| format!("não consegui executar o svn: {e}. O Subversion está instalado?"))?;
+    // `kill_on_drop` garante que, no timeout, o processo é morto ao descartar o future.
+    let output = match timeout(SVN_TIMEOUT, cmd.output()).await {
+        Ok(res) => res
+            .map_err(|e| format!("não consegui executar o svn: {e}. O Subversion está instalado?"))?,
+        Err(_) => {
+            return Err(
+                "a operação do svn excedeu o tempo limite (30 min). Verifique a rede/VPN e o acesso SSH ao servidor."
+                    .into(),
+            )
+        }
+    };
 
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
     let stderr = String::from_utf8_lossy(&output.stderr).to_string();

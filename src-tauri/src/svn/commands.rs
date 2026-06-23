@@ -742,6 +742,15 @@ pub fn save_config(config: AppConfig, state: State<'_, AppState>) -> Result<(), 
     Ok(())
 }
 
+/// Config-modelo semeada a partir de um host SSH (ex.: `usuario@servidor`):
+/// deriva `repo_base`, as raízes oficiais e os projetos-preset. Usada pela tela
+/// de primeira execução para pré-popular tudo; não persiste nada (o frontend
+/// revisa e chama `save_config`).
+#[tauri::command]
+pub fn preset_config(host: String) -> AppConfig {
+    AppConfig::seeded_for(&host)
+}
+
 // ---------------------------------------------------------------------------
 // Utilidades
 // ---------------------------------------------------------------------------

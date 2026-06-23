@@ -237,7 +237,29 @@ impl Default for AppConfig {
             .map(|p| p.to_string_lossy().to_string())
             .unwrap_or_else(|| ".".to_string());
 
-        let host = "daniel.souza@172.25.136.61".to_string();
+        // Default neutro, sem servidor: a primeira execução pede o host e
+        // (opcionalmente) semeia raízes/projetos via `AppConfig::seeded_for`.
+        AppConfig {
+            base_dir: home,
+            host: String::new(),
+            repo_base: String::new(),
+            repo_roots: Vec::new(),
+            projects: Vec::new(),
+            ssh_mode: SshMode::Auto,
+            theme: "dark".into(),
+            external_diff_tool: "meld".into(),
+            verbose: false,
+            confirm_server_ops: true,
+        }
+    }
+}
+
+impl AppConfig {
+    /// Config semeada a partir de um host SSH (ex.: `usuario@servidor`): deriva a
+    /// `repo_base`, as 8 raízes oficiais e os projetos-preset do fluxo da equipe.
+    /// Usada pela tela de primeira execução para pré-popular tudo de uma vez.
+    pub fn seeded_for(host: &str) -> Self {
+        let host = host.trim().to_string();
         let repo_base = format!("svn+ssh://{host}/usr/svn/");
         // Raízes oficiais do servidor (8). As duas usadas pelos presets
         // (`veiculo` e `getranlibs`) saem da mesma base.
@@ -288,16 +310,11 @@ impl Default for AppConfig {
         ];
 
         AppConfig {
-            base_dir: home,
             host,
             repo_base,
             repo_roots,
             projects,
-            ssh_mode: SshMode::Auto,
-            theme: "dark".into(),
-            external_diff_tool: "meld".into(),
-            verbose: false,
-            confirm_server_ops: true,
+            ..AppConfig::default()
         }
     }
 }

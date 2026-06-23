@@ -19,8 +19,11 @@ pub struct AppState {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    install_panic_hook();
+
     let config = config::load();
     let host = config.host.clone();
+    let host_exit = host.clone();
 
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
@@ -72,6 +75,7 @@ pub fn run() {
             // config + utilidades
             svn::commands::load_config,
             svn::commands::save_config,
+            svn::commands::preset_config,
             svn::commands::svn_version,
             svn::commands::test_connection,
             svn::commands::reveal_in_file_manager,
@@ -79,11 +83,43 @@ pub fn run() {
             svn::commands::suggested_base_dir,
         ])
         .on_window_event(move |_window, event| {
-            // Ao fechar, encerra a conexão SSH mestre (best-effort).
+            // Ao fechar a janela, encerra a conexão SSH mestre (best-effort).
             if let tauri::WindowEvent::Destroyed = event {
                 svn::conn::close_master(&host);
             }
         })
-        .run(tauri::generate_context!())
-        .expect("erro ao iniciar a aplicação Tauri");
+        .build(tauri::generate_context!())
+        .expect("erro ao iniciar a aplicação Tauri")
+        // Cobre também as saídas que não passam pelo `Destroyed` da janela.
+        .run(move |_app_handle, event| {
+            if let tauri::RunEvent::Exit = event {
+                svn::conn::close_master(&host_exit);
+            }
+        });
+}
+
+/// Instala um hook de panic que registra o erro em `~/.cache/subversa/crash.log`
+/// antes de o processo abortar (a release usa `panic = "abort"`, sem unwind).
+/// Garante que um panic em produção deixe rastro em vez de só sumir com a janela.
+fn install_panic_hook() {
+    let previous = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        if let Some(base) = dirs::cache_dir() {
+            let dir = base.join("subversa");
+            let _ = std::fs::create_dir_all(&dir);
+            if let Ok(mut f) = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(dir.join("crash.log"))
+            {
+                use std::io::Write;
+                let ts = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_secs())
+                    .unwrap_or(0);
+                let _ = writeln!(f, "[{ts}] {info}");
+            }
+        }
+        previous(info);
+    }));
 }

@@ -68,6 +68,10 @@ pub fn which(bin: &str) -> bool {
 
 /// Encerra a conexão mestre do ControlMaster (chamado no fim, best-effort).
 pub fn close_master(host: &str) {
+    // Sem host configurado (primeira execução) não há socket para encerrar.
+    if host.trim().is_empty() {
+        return;
+    }
     let cp = control_dir().join("cm-%r@%h:%p");
     let _ = std::process::Command::new("ssh")
         .args(["-O", "exit", "-o"])

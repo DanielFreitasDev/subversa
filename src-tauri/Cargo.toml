@@ -5,6 +5,7 @@ description = "Subversa — cliente SVN desktop moderno"
 authors = ["Daniel Souza"]
 edition = "2021"
 rust-version = "1.77"
+publish = false
 
 [lib]
 # O sufixo `_lib` é necessário para o nome da lib não conflitar com o binário no Windows.
