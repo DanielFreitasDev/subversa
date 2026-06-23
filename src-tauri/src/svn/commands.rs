@@ -1026,6 +1026,24 @@ pub async fn svn_version(state: State<'_, AppState>) -> Result<String, String> {
     Ok(v.trim().to_string())
 }
 
+/// Verifica a presença dos binários externos exigidos em tempo de execução,
+/// sem executá-los — distingue "fora do PATH" de outras falhas. Usado no boot
+/// para avisar cedo (ex.: `svn` não instalado) em vez de só falhar na 1ª ação.
+#[tauri::command]
+pub fn check_prerequisites(state: State<'_, AppState>) -> Prerequisites {
+    let mode = mode_of(&state);
+    let has_pass = std::env::var("SSHPASS")
+        .map(|v| !v.is_empty())
+        .unwrap_or(false);
+    let sshpass_needed =
+        matches!(mode, SshMode::Password) || (matches!(mode, SshMode::Auto) && has_pass);
+    Prerequisites {
+        svn_ok: super::conn::which("svn"),
+        sshpass_ok: super::conn::which("sshpass"),
+        sshpass_needed,
+    }
+}
+
 /// Testa a conexão com o servidor consultando uma URL (info).
 #[tauri::command]
 pub async fn test_connection(
@@ -1037,6 +1055,26 @@ pub async fn test_connection(
     run(&["info", "--non-interactive", "--", &url], None, mode).await
 }
 
+/// Dispara um processo de GUI externo sem bloquear nem deixar zumbis: silencia
+/// os descritores padrão, coloca o filho em seu próprio grupo de processo (para
+/// não receber sinais do app) e o reapeia numa thread dedicada (caso contrário
+/// o processo terminado viraria `<defunct>` até o app fechar).
+fn spawn_detached(mut cmd: std::process::Command) -> std::io::Result<()> {
+    cmd.stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null());
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        cmd.process_group(0);
+    }
+    let mut child = cmd.spawn()?;
+    std::thread::spawn(move || {
+        let _ = child.wait();
+    });
+    Ok(())
+}
+
 /// Abre um caminho no gerenciador de arquivos do sistema.
 #[tauri::command]
 pub fn reveal_in_file_manager(path: String) -> Result<(), String> {
@@ -1046,11 +1084,9 @@ pub fn reveal_in_file_manager(path: String) -> Result<(), String> {
     } else {
         p.parent().map(|x| x.to_path_buf()).unwrap_or(p)
     };
-    std::process::Command::new("xdg-open")
-        .arg(target)
-        .spawn()
-        .map_err(|e| e.to_string())?;
-    Ok(())
+    let mut cmd = std::process::Command::new("xdg-open");
+    cmd.arg(target);
+    spawn_detached(cmd).map_err(|e| e.to_string())
 }
 
 /// Valida o nome de uma ferramenta externa: apenas um nome de binário simples
@@ -1092,11 +1128,9 @@ pub fn open_external_diff(
     let tool = sanitize_tool(&raw).ok_or_else(|| {
         format!("ferramenta de diff inválida: {raw:?} (use só o nome do binário, ex.: meld)")
     })?;
-    std::process::Command::new(&tool)
-        .arg(&target)
-        .spawn()
-        .map_err(|e| format!("não consegui abrir {tool}: {e}"))?;
-    Ok(())
+    let mut cmd = std::process::Command::new(&tool);
+    cmd.arg(&target);
+    spawn_detached(cmd).map_err(|e| format!("não consegui abrir {tool}: {e}"))
 }
 
 /// Diretório-base padrão sugerido na primeira execução (cwd se contiver WCs).

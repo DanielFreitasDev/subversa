@@ -23,7 +23,7 @@
   /* texto */
   --color-ink: #e7eaf2;
   --color-muted: #98a1b6;
-  --color-faint: #596077;
+  --color-faint: #828aa0; /* ~5.4:1 sobre o painel (WCAG AA p/ texto pequeno) */
 
   /* marca */
   --color-brand: #7c6cff;

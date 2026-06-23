@@ -83,7 +83,10 @@ function Browser({ wc }: { wc: WorkingCopy }) {
 
   const deleteBranch = async (entry: ListEntry) => {
     const target = `${url}/${entry.name}`;
-    const isCurrent = decodeUrlSafe(target) === decodeUrlSafe(wc.url);
+    // Compara as URLs cruas (mesmo encoding do backend), só normalizando a barra
+    // final — decodeUrlSafe é para exibição e poderia divergir e esconder o aviso.
+    const norm = (u: string) => u.replace(/\/+$/, "");
+    const isCurrent = norm(target) === norm(wc.url);
     const ok = await confirm({
       title: "Apagar do servidor?",
       message:

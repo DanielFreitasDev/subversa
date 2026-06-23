@@ -1,11 +1,15 @@
 import { useEffect, useState } from "react";
+import { AlertTriangle, RefreshCw } from "lucide-react";
 
 import { AppShell } from "@/components/layout/AppShell";
+import { Button } from "@/components/ui/Button";
 import { Logo } from "@/components/ui/Logo";
-import { suggestedBaseDir } from "@/lib/api";
+import { checkPrerequisites, suggestedBaseDir } from "@/lib/api";
+import type { Prerequisites } from "@/lib/types";
 import { useConfigStore } from "@/store/config";
 import { useConfirmStore } from "@/store/confirm";
 import { useRepoBrowserStore } from "@/store/repoBrowser";
+import { toast } from "@/store/toast";
 import { useUiStore } from "@/store/ui";
 import { useWorkspaceStore } from "@/store/workspace";
 import { SetupView } from "@/views/SetupView";
@@ -21,6 +25,30 @@ function Splash() {
   );
 }
 
+/** Tela bloqueante quando o cliente `svn` não está disponível no PATH. */
+function PrereqGate({ onRetry }: { onRetry: () => void }) {
+  return (
+    <div className="flex h-full items-center justify-center bg-canvas p-6">
+      <div className="max-w-md space-y-4 text-center">
+        <div className="mx-auto flex size-14 items-center justify-center rounded-2xl bg-danger/12 text-danger ring-1 ring-danger/30">
+          <AlertTriangle className="size-7" />
+        </div>
+        <h1 className="text-lg font-semibold text-ink">Subversion não encontrado</h1>
+        <p className="text-sm leading-relaxed text-muted">
+          O Subversa precisa do cliente <code className="rounded bg-panel-2 px-1">svn</code> (1.8+)
+          disponível no PATH. Instale o Subversion e verifique novamente.
+        </p>
+        <p className="text-[12px] text-faint">
+          Debian/Ubuntu: <code className="rounded bg-panel-2 px-1">sudo apt install subversion</code>
+        </p>
+        <Button variant="primary" onClick={onRetry}>
+          <RefreshCw className="size-4" /> Verificar de novo
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   const load = useConfigStore((s) => s.load);
   const loaded = useConfigStore((s) => s.loaded);
@@ -29,11 +57,26 @@ export default function App() {
   const refresh = useWorkspaceStore((s) => s.refresh);
   const togglePalette = useUiStore((s) => s.togglePalette);
   const [booting, setBooting] = useState(true);
+  const [prereq, setPrereq] = useState<Prerequisites | null>(null);
 
-  // Boot: carrega config, define a pasta-base e detecta as working copies.
+  // Boot: carrega config, checa pré-requisitos, define a pasta-base e detecta.
   useEffect(() => {
     (async () => {
       const cfg = await load();
+      // Pré-requisitos de runtime: `svn` é essencial (gate bloqueante adiante);
+      // `sshpass` só quando o modo de autenticação exige — aí só avisamos.
+      try {
+        const pre = await checkPrerequisites();
+        setPrereq(pre);
+        if (pre.sshpassNeeded && !pre.sshpassOk) {
+          toast.warn(
+            "sshpass não encontrado",
+            "A autenticação por senha precisa do sshpass no PATH. Instale-o ou use uma chave SSH.",
+          );
+        }
+      } catch {
+        /* se a checagem falhar, não bloqueia o boot */
+      }
       let base = cfg.baseDir;
       try {
         // Na primeira execução (ou pasta inexistente), sugere uma melhor.
@@ -47,6 +90,17 @@ export default function App() {
       setBooting(false);
     })();
   }, [load, setBaseDir, refresh]);
+
+  // Re-verifica os pré-requisitos (botão do gate, após instalar o svn).
+  const recheckPrereqs = async () => {
+    try {
+      const pre = await checkPrerequisites();
+      setPrereq(pre);
+      if (pre.svnOk && config?.host?.trim()) await refresh();
+    } catch {
+      /* ignore */
+    }
+  };
 
   // Atalho global da paleta de comandos (⌘K / Ctrl+K).
   useEffect(() => {
@@ -69,6 +123,7 @@ export default function App() {
   }, [togglePalette]);
 
   if (!loaded || booting) return <Splash />;
+  if (prereq && !prereq.svnOk) return <PrereqGate onRetry={recheckPrereqs} />;
   if (!config?.host?.trim()) return <SetupView />;
   return <AppShell />;
 }

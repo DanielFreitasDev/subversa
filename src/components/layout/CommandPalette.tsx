@@ -23,6 +23,7 @@ import {
 import { revealInFileManager } from "@/lib/api";
 import { tryRun } from "@/lib/op";
 import { cn } from "@/lib/utils";
+import { useFocusTrap } from "@/hooks/useFocusTrap";
 import { useActions } from "@/hooks/useActions";
 import { useSelectedWc } from "@/hooks/useSelectedWc";
 import { useConfigStore } from "@/store/config";
@@ -55,6 +56,8 @@ export function CommandPalette() {
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(dialogRef, open);
 
   const commands = useMemo<Command[]>(() => {
     const close = (fn: () => void) => () => {
@@ -269,6 +272,13 @@ export function CommandPalette() {
             onClick={() => setPalette(false)}
           />
           <motion.div
+            ref={dialogRef}
+            role="dialog"
+            aria-modal
+            aria-label="Paleta de comandos"
+            onKeyDown={(e) => {
+              if (e.key === "Escape") setPalette(false);
+            }}
             className="relative w-full max-w-xl overflow-hidden rounded-xl border border-line bg-panel shadow-pop"
             initial={{ opacity: 0, y: 10, scale: 0.98 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -284,9 +294,16 @@ export function CommandPalette() {
                 onKeyDown={onKey}
                 placeholder="Buscar comando…"
                 className="h-12 flex-1 bg-transparent text-sm text-ink outline-none placeholder:text-faint selectable"
+                role="combobox"
+                aria-expanded
+                aria-controls="palette-list"
+                aria-activedescendant={
+                  filtered.length > 0 ? `palette-opt-${active}` : undefined
+                }
+                aria-label="Buscar comando"
               />
             </div>
-            <div className="max-h-[52vh] overflow-y-auto p-1.5">
+            <div id="palette-list" role="listbox" className="max-h-[52vh] overflow-y-auto p-1.5">
               {filtered.length === 0 && (
                 <div className="py-10 text-center text-sm text-faint">Nenhum comando encontrado</div>
               )}
@@ -301,6 +318,9 @@ export function CommandPalette() {
                       </div>
                     )}
                     <button
+                      id={`palette-opt-${i}`}
+                      role="option"
+                      aria-selected={i === active}
                       onMouseEnter={() => setActive(i)}
                       onClick={() => c.run()}
                       className={cn(

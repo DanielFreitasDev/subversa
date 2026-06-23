@@ -1,6 +1,7 @@
 //! Persistência da configuração da aplicação em `~/.config/subversa/config.json`.
 
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use crate::svn::types::AppConfig;
 
@@ -8,6 +9,12 @@ fn config_dir() -> PathBuf {
     let base = dirs::config_dir().unwrap_or_else(std::env::temp_dir);
     let dir = base.join("subversa");
     let _ = std::fs::create_dir_all(&dir);
+    // Restringe ao dono: o diretório guarda o host/usuário SSH.
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700));
+    }
     dir
 }
 
@@ -47,10 +54,16 @@ fn reconcile(cfg: &mut AppConfig) -> bool {
     false
 }
 
+/// Sequência monotônica para nomear temporários de gravação de forma única.
+static SAVE_SEQ: AtomicU64 = AtomicU64::new(0);
+
 /// Grava a configuração no disco (escrita atômica via arquivo temporário).
 pub fn save(cfg: &AppConfig) -> Result<(), String> {
     let path = config_path();
-    let tmp = path.with_extension("json.tmp");
+    // Temporário único por gravação (pid + sequência): dois saves concorrentes
+    // nunca escrevem no mesmo arquivo intermediário antes do `rename` atômico.
+    let seq = SAVE_SEQ.fetch_add(1, Ordering::Relaxed);
+    let tmp = path.with_extension(format!("json.tmp.{}.{}", std::process::id(), seq));
     let text = serde_json::to_string_pretty(cfg).map_err(|e| e.to_string())?;
     std::fs::write(&tmp, text).map_err(|e| e.to_string())?;
     // Restringe ao dono: o arquivo contém host/usuário SSH.

@@ -12,6 +12,7 @@ import type {
   CommandOutput,
   ListEntry,
   LogEntry,
+  Prerequisites,
   StatusResult,
   UrlInfo,
   WorkingCopy,
@@ -138,6 +139,8 @@ export const presetConfig = (host: string) =>
   invoke<AppConfig>("preset_config", { host });
 
 export const svnVersion = () => invoke<string>("svn_version");
+
+export const checkPrerequisites = () => invoke<Prerequisites>("check_prerequisites");
 
 export const testConnection = (url: string) =>
   invoke<CommandOutput>("test_connection", { url });

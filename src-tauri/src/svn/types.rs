@@ -31,6 +31,18 @@ pub struct CommandOutput {
     pub command: String,
 }
 
+/// Disponibilidade dos binários externos exigidos em tempo de execução.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Prerequisites {
+    /// `svn` está disponível no PATH.
+    pub svn_ok: bool,
+    /// `sshpass` está disponível no PATH.
+    pub sshpass_ok: bool,
+    /// A configuração atual exige `sshpass` (modo senha, ou auto com `$SSHPASS`).
+    pub sshpass_needed: bool,
+}
+
 /// Onde a working copy está apontando: trunk, branch, tag ou outro.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]

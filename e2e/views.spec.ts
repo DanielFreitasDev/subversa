@@ -144,3 +144,43 @@ test.describe("tema claro", () => {
     await expect(page).toHaveScreenshot("settings-light.png");
   });
 });
+
+// Fluxos de escrita (sem screenshot): exercitam confirmações e safety rails.
+test.describe("interações", () => {
+  test("commit direto na trunk pede confirmação e envia", async ({ page }) => {
+    await gotoApp(page);
+    await openFirstWc(page); // sna = trunk (linha principal)
+
+    // Marca um arquivo modificado (o índice 0 é o "selecionar todos", que
+    // incluiria o conflito e bloquearia o commit) e escreve a mensagem.
+    await page.getByRole("checkbox").nth(1).check();
+    await page.getByPlaceholder(/Mensagem do commit/).fill("Ajusta cálculo de prazo");
+    await page.getByRole("button", { name: /Commitar/ }).first().click();
+
+    // Safety rail: aviso de commit direto na linha principal.
+    await expect(page.getByText(/commitando DIRETO/i)).toBeVisible();
+
+    // Confirma no diálogo → toast de sucesso (o mock devolve "Revisão 4821").
+    await page.getByRole("button", { name: "Commitar", exact: true }).click();
+    await expect(page.getByText("Commit enviado")).toBeVisible();
+  });
+
+  test("apagar branch do servidor exige digitar o nome (safety rail)", async ({ page }) => {
+    await gotoApp(page);
+    await openFirstWc(page);
+    await openTab(page, "Branches");
+
+    // Revela as ações da linha da branch e clica em apagar.
+    const row = page.locator(".group").filter({ hasText: "issue_1255" });
+    await row.hover();
+    await row.getByRole("button", { name: "Apagar do servidor" }).click();
+
+    // O diálogo trava o botão até o nome ser digitado exatamente.
+    await expect(page.getByText(/Digite/)).toBeVisible();
+    const confirmBtn = page.getByRole("button", { name: "Apagar", exact: true });
+    await expect(confirmBtn).toBeDisabled();
+
+    await page.getByPlaceholder("issue_1255").fill("issue_1255");
+    await expect(confirmBtn).toBeEnabled();
+  });
+});

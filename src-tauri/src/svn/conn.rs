@@ -18,6 +18,13 @@ fn control_dir() -> PathBuf {
     let base = dirs::cache_dir().unwrap_or_else(std::env::temp_dir);
     let dir = base.join("subversa").join("ssh");
     let _ = std::fs::create_dir_all(&dir);
+    // O socket do ControlMaster multiplexa uma sessão SSH já autenticada;
+    // restringe o diretório ao dono para evitar hijack em host multiusuário.
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700));
+    }
     dir
 }
 

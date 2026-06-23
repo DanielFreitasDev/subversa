@@ -206,6 +206,8 @@ export function tauriInit(fx: MockData) {
         };
       case "svn_version":
         return "svn, version 1.14.3 (r1924134)\n   compiled Apr 1 2026";
+      case "check_prerequisites":
+        return { svnOk: true, sshpassOk: true, sshpassNeeded: false };
       case "test_connection":
         return ok("svn info " + fx.config.repoBase);
       case "reveal_in_file_manager":

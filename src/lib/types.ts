@@ -122,6 +122,13 @@ export interface Project {
   url: string;
 }
 
+/** Disponibilidade dos binários externos exigidos em runtime (espelha o Rust). */
+export interface Prerequisites {
+  svnOk: boolean;
+  sshpassOk: boolean;
+  sshpassNeeded: boolean;
+}
+
 export interface AppConfig {
   baseDir: string;
   host: string;

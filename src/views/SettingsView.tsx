@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { getVersion } from "@tauri-apps/api/app";
 import {
@@ -20,7 +20,7 @@ import { Input, Switch } from "@/components/ui/Field";
 import { Logo } from "@/components/ui/Logo";
 import { Segmented } from "@/components/ui/Segmented";
 import { reportOutput, tryRun } from "@/lib/op";
-import type { Project } from "@/lib/types";
+import type { AppConfig, Project } from "@/lib/types";
 import { decodeUrl } from "@/lib/utils";
 import { useConfigStore } from "@/store/config";
 import { toast } from "@/store/toast";
@@ -80,15 +80,21 @@ export function SettingsView() {
   const [appVersion, setAppVersion] = useState("");
   const [projectsDirty, setProjectsDirty] = useState(false);
 
+  const prevConfigRef = useRef<AppConfig | null>(null);
   useEffect(() => {
-    if (config) {
-      setHost(config.host);
+    if (!config) return;
+    const prev = prevConfigRef.current;
+    prevConfigRef.current = config;
+    // Adota o valor vindo do config apenas quando AQUELE campo muda (origem
+    // externa), preservando edições locais em andamento nos demais campos.
+    // Antes, salvar qualquer campo (ou o tema) redefinia tudo a partir do
+    // config, descartando o texto que estava sendo digitado.
+    if (!prev || prev.host !== config.host) setHost(config.host);
+    if (!prev || prev.externalDiffTool !== config.externalDiffTool)
       setTool(config.externalDiffTool);
-      setRepoBase(config.repoBase);
-      // Não sobrescreve edições de projetos ainda não salvas (ex.: ao salvar o
-      // tema, o config muda e este efeito dispararia, descartando-as).
-      if (!projectsDirty) setProjects(config.projects);
-    }
+    if (!prev || prev.repoBase !== config.repoBase) setRepoBase(config.repoBase);
+    if (!projectsDirty && (!prev || prev.projects !== config.projects))
+      setProjects(config.projects);
   }, [config, projectsDirty]);
 
   useEffect(() => {

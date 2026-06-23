@@ -55,8 +55,13 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   },
 
   refreshOne: async (path) => {
+    // Lê (sem incrementar) a época atual: se um refresh global mais novo
+    // assumir durante o await, descartamos este write para não reintroduzir
+    // um snapshot obsoleto. Dois refreshOne concorrentes não se invalidam.
+    const epoch = refreshEpoch;
     try {
       const wc = await api.getInfo(path);
+      if (epoch !== refreshEpoch) return;
       set((s) => ({
         workingCopies: s.workingCopies.map((w) => (w.path === path ? wc : w)),
       }));

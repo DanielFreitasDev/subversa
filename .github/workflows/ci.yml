@@ -38,6 +38,10 @@ jobs:
       - name: Install Node dependencies
         run: npm ci
 
+      - name: Audit de dependências (não bloqueante)
+        run: npm audit --audit-level=high
+        continue-on-error: true
+
       - name: Install Playwright Chrome
         run: npx playwright install --with-deps chrome
 
@@ -58,3 +62,37 @@ jobs:
       - name: Test Rust
         working-directory: src-tauri
         run: cargo test
+
+  # Valida o empacotamento .deb de verdade (só em push, não em cada PR — é pesado).
+  bundle:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libayatana-appindicator3-dev \
+            libgtk-3-dev \
+            librsvg2-dev \
+            libsoup-3.0-dev \
+            libwebkit2gtk-4.1-dev \
+            patchelf
+
+      - name: Install Node dependencies
+        run: npm ci
+
+      - name: Build .deb
+        run: npm run tauri build -- --bundles deb

@@ -57,7 +57,16 @@ export function CheckoutDialog() {
     if (out && reportOutput(out, "Projeto baixado", name)) {
       setOpen(false);
       await refresh();
-      select(dest);
+      // Seleciona a WC recém-baixada lendo a lista já atualizada. Casa por path
+      // exato e, se a normalização do backend divergir (barra final/symlink),
+      // por nome do destino ou prefixo do caminho — evita cair numa tela vazia.
+      const leaf = name.trim();
+      const wcs = useWorkspaceStore.getState().workingCopies;
+      const match =
+        wcs.find((w) => w.path === dest) ??
+        wcs.find((w) => w.name === leaf) ??
+        wcs.find((w) => w.path.startsWith(dest));
+      if (match) select(match.path);
       setView("changes");
     }
   };

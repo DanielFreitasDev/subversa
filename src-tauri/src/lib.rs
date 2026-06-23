@@ -77,6 +77,7 @@ pub fn run() {
             svn::commands::save_config,
             svn::commands::preset_config,
             svn::commands::svn_version,
+            svn::commands::check_prerequisites,
             svn::commands::test_connection,
             svn::commands::reveal_in_file_manager,
             svn::commands::open_external_diff,

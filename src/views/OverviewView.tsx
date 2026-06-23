@@ -128,6 +128,7 @@ function WcCard({
 export function OverviewView() {
   const workingCopies = useWorkspaceStore((s) => s.workingCopies);
   const loading = useWorkspaceStore((s) => s.loading);
+  const error = useWorkspaceStore((s) => s.error);
   const baseDir = useWorkspaceStore((s) => s.baseDir);
   const select = useWorkspaceStore((s) => s.select);
   const refresh = useWorkspaceStore((s) => s.refresh);
@@ -208,6 +209,17 @@ export function OverviewView() {
 
         {loading && workingCopies.length === 0 ? (
           <Loading label="Detectando working copies…" />
+        ) : error && workingCopies.length === 0 ? (
+          <Empty
+            icon={<AlertTriangle className="size-7 text-danger" />}
+            title="Não consegui varrer esta pasta"
+            description={error}
+            action={
+              <Button variant="primary" onClick={() => refresh()}>
+                <RefreshCw className="size-4" /> Tentar de novo
+              </Button>
+            }
+          />
         ) : workingCopies.length === 0 ? (
           <Empty
             icon={<FolderGit2 className="size-7" />}

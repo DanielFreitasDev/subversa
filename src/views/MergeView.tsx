@@ -135,6 +135,7 @@ function Merge({ wc }: { wc: WorkingCopy }) {
   };
 
   const runSync = async () => {
+    if (busy) return;
     if (!mainlineUrl) return;
     if (confirmServerOps) {
       const ok = await confirm({
@@ -180,6 +181,7 @@ function Merge({ wc }: { wc: WorkingCopy }) {
 
   // --- Publicar / reintegrar: branch → trunk --------------------------------
   const runPublish = async () => {
+    if (busy) return;
     if (!mainlineUrl) {
       toast.error("Projeto não reconhecido", "Não sei qual é a linha principal deste projeto.");
       return;
@@ -210,7 +212,17 @@ function Merge({ wc }: { wc: WorkingCopy }) {
       o = await api.merge(wc.path, branch, false, false);
       setOutput((p) => p + "\n" + o.stdout + (o.stderr ? "\n" + o.stderr : ""));
       await refreshOne(wc.path);
-      if (!o.success) return reportOutput(o, "");
+      if (!o.success) {
+        // O switch já foi aplicado: a WC está no trunk, ainda que o merge falhe.
+        setOutput(
+          (p) =>
+            p +
+            "\n\n⚠️ O switch para a linha principal foi aplicado, mas o merge falhou — " +
+            "a sua working copy está agora no trunk. Corrija o problema acima e tente publicar " +
+            "novamente, ou troque de volta para a sua branch.",
+        );
+        return reportOutput(o, "");
+      }
 
       const st = await tryRun(() => api.getStatus(wc.path, false));
       if (st?.entries.some((e) => e.item === "conflicted")) {
@@ -226,6 +238,7 @@ function Merge({ wc }: { wc: WorkingCopy }) {
 
   // --- Reintegrar uma branch (estando no trunk) -----------------------------
   const runReintegrateFrom = async (dry: boolean) => {
+    if (busy) return;
     const url = branchUrl.trim();
     if (!url) return toast.warn("Informe a URL da branch a reintegrar");
     setBusy(dry ? "preview" : "reintegrate");

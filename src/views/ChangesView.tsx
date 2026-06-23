@@ -288,6 +288,13 @@ function Changes({ wc }: { wc: WorkingCopy }) {
         setMessage("");
       } else {
         reportOutput(out, "");
+        // add/remove já aplicados no disco, mas o commit não foi enviado: avisa
+        // para o usuário não achar que nada mudou (os itens seguem pendentes).
+        if (toAdd.length || toDel.length)
+          toast.info(
+            "Itens preparados, não enviados",
+            "Os arquivos foram adicionados/removidos localmente, mas o commit falhou; eles continuam pendentes na lista.",
+          );
       }
     } catch (e) {
       toast.error("Falha no commit", String(e));

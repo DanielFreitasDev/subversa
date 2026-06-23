@@ -1,9 +1,10 @@
-import { useEffect } from "react";
+import { useEffect, useId, useRef } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import { X } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { useFocusTrap } from "@/hooks/useFocusTrap";
 import { IconButton } from "./Button";
 
 type Size = "sm" | "md" | "lg" | "xl";
@@ -41,6 +42,11 @@ export function Modal({
   locked,
   className,
 }: ModalProps) {
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const titleId = useId();
+  const descId = useId();
+  useFocusTrap(dialogRef, open);
+
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
@@ -73,8 +79,11 @@ export function Modal({
             onClick={() => !locked && onClose()}
           />
           <motion.div
+            ref={dialogRef}
             role="dialog"
             aria-modal
+            aria-labelledby={title ? titleId : undefined}
+            aria-describedby={description ? descId : undefined}
             className={cn(
               "relative w-full rounded-xl border border-line bg-panel shadow-pop",
               SIZES[size],
@@ -93,9 +102,15 @@ export function Modal({
                   </div>
                 )}
                 <div className="min-w-0 flex-1">
-                  {title && <h2 className="text-[15px] font-semibold text-ink">{title}</h2>}
+                  {title && (
+                    <h2 id={titleId} className="text-[15px] font-semibold text-ink">
+                      {title}
+                    </h2>
+                  )}
                   {description && (
-                    <p className="mt-0.5 text-[13px] leading-snug text-muted">{description}</p>
+                    <p id={descId} className="mt-0.5 text-[13px] leading-snug text-muted">
+                      {description}
+                    </p>
                   )}
                 </div>
                 {!locked && (
