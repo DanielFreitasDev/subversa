@@ -22,3 +22,9 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Playwright (os baselines em e2e/**-snapshots/ SÃO versionados)
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/

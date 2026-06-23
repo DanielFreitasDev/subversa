@@ -15,12 +15,14 @@ npm install                 # install JS deps (also resolves Rust deps on first 
 npm run tauri dev           # run the full app (Vite HMR + Rust debug build) — primary dev loop
 npm run dev                 # frontend only (Vite on :1420, no native backend)
 npm run build               # tsc typecheck + vite build (frontend bundle into dist/)
+npm run e2e                 # Playwright visual e2e (frontend + mocked Tauri IPC)
+npm run e2e:update          # regenerate the screenshot baselines
 npm run tauri build         # production binary + system packages
 npm run tauri build -- --bundles deb   # just the .deb
 ```
 
 - **Linux/X11 blank window:** prefix with `WEBKIT_DISABLE_DMABUF_RENDERER=1 WEBKIT_DISABLE_COMPOSITING_MODE=1`.
-- **There are no automated tests and no separate lint step.** Type safety is the gate: `tsc` runs in strict mode with `noUnusedLocals`/`noUnusedParameters` (so unused vars fail the build). Run `npm run build` to typecheck the frontend; `cargo build`/`cargo clippy` inside `src-tauri/` for Rust. Verification is otherwise manual — run the app.
+- **The frontend has a Playwright visual e2e suite (`e2e/`); the Rust backend has no tests; there is no separate lint step.** Type safety is the primary gate: `tsc` runs in strict mode with `noUnusedLocals`/`noUnusedParameters` (so unused vars fail the build). Run `npm run build` to typecheck the frontend; `cargo build`/`cargo clippy` inside `src-tauri/` for Rust. `npm run e2e` drives the real frontend in headless Chrome (system `channel: "chrome"`) with a **mocked Tauri IPC** (`e2e/mock/tauri.ts` stubs every `invoke()` command with fixtures), asserting view content and doing screenshot regression (baselines in `e2e/*-snapshots/`, committed; regenerate with `npm run e2e:update`). The e2e suite lives outside the `tsc` `include`, so it never affects `npm run build`; it does **not** exercise the Rust backend or real `svn`. Backend/end-to-end verification is still manual — run the app.
 - **Runtime prerequisites:** `svn` 1.8+ and `sshpass` on PATH. Auth password comes from `$SSHPASS` in the environment (or an SSH key). Build also needs Rust stable, `webkit2gtk-4.1`, `libsoup-3.0`.
 
 ## Architecture

@@ -1,0 +1,126 @@
+/**
+ * Testes visuais das views do Subversa.
+ *
+ * Cada teste faz asserts no conteúdo (falha sozinho se a UI quebrar) E captura
+ * um snapshot pra regressão visual (`toHaveScreenshot`). Pra (re)gerar os
+ * baselines: `npm run e2e:update`.
+ */
+import { test, expect, gotoApp, openFirstWc, openTab } from "./fixtures";
+
+test.describe("tema escuro", () => {
+  test("visão geral", async ({ page }) => {
+    await gotoApp(page);
+
+    await expect(page.getByRole("heading", { name: "Visão geral" })).toBeVisible();
+    await expect(page.getByText("working copies")).toBeVisible();
+    await expect(page.getByText("Disponíveis para baixar")).toBeVisible();
+    // sna está com conflito → o card mostra o aviso.
+    await expect(page.getByText("conflitos", { exact: true })).toBeVisible();
+
+    await expect(page).toHaveScreenshot("overview.png");
+  });
+
+  test("alterações + diff + avisos", async ({ page }) => {
+    await gotoApp(page);
+    await openFirstWc(page);
+
+    // Lista de arquivos com seus status. ("ProcessoService.java" também aparece
+    // no cabeçalho do diff quando carregado → .first() pega o item da lista.)
+    await expect(page.getByText("ProcessoService.java").first()).toBeVisible();
+    await expect(page.getByText("Conciliador.java")).toBeVisible();
+    // Aviso de conflito e aviso de commit direto na linha principal.
+    await expect(page.getByText("Há conflitos — resolva antes de commitar.")).toBeVisible();
+    await expect(page.getByText(/Você está na/)).toBeVisible();
+    // Painel de diff à direita.
+    await expect(page.getByText("Unificado")).toBeVisible();
+
+    await expect(page).toHaveScreenshot("changes.png");
+  });
+
+  test("histórico (log + diff da revisão)", async ({ page }) => {
+    await gotoApp(page);
+    await openFirstWc(page);
+    await openTab(page, "Histórico");
+
+    // A mensagem do commit selecionado aparece na lista E no detalhe → .first().
+    await expect(page.getByText("Corrige cálculo de prazo no ProcessoService").first()).toBeVisible();
+    await expect(page.getByText("Refatora camada de persistência")).toBeVisible();
+
+    await expect(page).toHaveScreenshot("history.png");
+  });
+
+  test("branches (listagem por URL)", async ({ page }) => {
+    await gotoApp(page);
+    await openFirstWc(page);
+    await openTab(page, "Branches");
+
+    // "issue_1234" também é o branchLabel do getran na sidebar; uso os únicos.
+    await expect(page.getByText("issue_1255")).toBeVisible();
+    await expect(page.getByText("issue_1198_hotfix")).toBeVisible();
+
+    await expect(page).toHaveScreenshot("branches.png");
+  });
+
+  test("integração", async ({ page }) => {
+    await gotoApp(page);
+    await openFirstWc(page);
+    await openTab(page, "Integração");
+
+    await expect(page.getByText(/Reintegrar uma branch/)).toBeVisible();
+
+    await expect(page).toHaveScreenshot("merge.png");
+  });
+
+  test("repositórios", async ({ page }) => {
+    await gotoApp(page);
+    await page.getByRole("button", { name: "Repositórios", exact: true }).click();
+    await page.waitForTimeout(400);
+
+    await expect(page.getByRole("button", { name: /Nova localização/ }).first()).toBeVisible();
+
+    await expect(page).toHaveScreenshot("repos.png");
+  });
+
+  test("configurações", async ({ page }) => {
+    await gotoApp(page);
+    await page.getByRole("button", { name: "Configurações", exact: true }).click();
+    await page.waitForTimeout(400);
+
+    await expect(page.getByText("Servidor & autenticação")).toBeVisible();
+    await expect(page.getByText("Localizações de repositório")).toBeVisible();
+
+    await expect(page).toHaveScreenshot("settings.png");
+  });
+
+  test("paleta de comandos (Ctrl+K)", async ({ page }) => {
+    await gotoApp(page);
+    await page.keyboard.press("Control+k");
+    await page.waitForTimeout(300);
+
+    await expect(page.getByPlaceholder(/Buscar comando/)).toBeVisible();
+
+    await expect(page).toHaveScreenshot("palette.png");
+  });
+});
+
+test.describe("tema claro", () => {
+  test.use({ theme: "light" });
+
+  test("aplica o tema claro", async ({ page }) => {
+    await gotoApp(page);
+    const isLight = await page.evaluate(() =>
+      document.documentElement.classList.contains("theme-light"),
+    );
+    expect(isLight).toBe(true);
+
+    await expect(page).toHaveScreenshot("overview-light.png");
+  });
+
+  test("configurações (claro)", async ({ page }) => {
+    await gotoApp(page);
+    await page.getByRole("button", { name: "Configurações", exact: true }).click();
+    await page.waitForTimeout(400);
+
+    await expect(page).toHaveScreenshot("settings-light.png");
+  });
+});
