@@ -6,6 +6,7 @@ import { suggestedBaseDir } from "@/lib/api";
 import { useConfigStore } from "@/store/config";
 import { useUiStore } from "@/store/ui";
 import { useWorkspaceStore } from "@/store/workspace";
+import { SetupView } from "@/views/SetupView";
 
 function Splash() {
   return (
@@ -21,6 +22,7 @@ function Splash() {
 export default function App() {
   const load = useConfigStore((s) => s.load);
   const loaded = useConfigStore((s) => s.loaded);
+  const config = useConfigStore((s) => s.config);
   const setBaseDir = useWorkspaceStore((s) => s.setBaseDir);
   const refresh = useWorkspaceStore((s) => s.refresh);
   const togglePalette = useUiStore((s) => s.togglePalette);
@@ -38,7 +40,8 @@ export default function App() {
         /* ignore */
       }
       setBaseDir(base);
-      await refresh();
+      // Sem host configurado → primeira execução (tela de setup); detecta depois.
+      if (cfg.host?.trim()) await refresh();
       setBooting(false);
     })();
   }, [load, setBaseDir, refresh]);
@@ -56,5 +59,6 @@ export default function App() {
   }, [togglePalette]);
 
   if (!loaded || booting) return <Splash />;
+  if (!config?.host?.trim()) return <SetupView />;
   return <AppShell />;
 }

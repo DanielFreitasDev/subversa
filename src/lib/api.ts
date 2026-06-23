@@ -133,6 +133,10 @@ export const loadConfig = () => invoke<AppConfig>("load_config");
 export const saveConfig = (config: AppConfig) =>
   invoke<void>("save_config", { config });
 
+/** Config-modelo semeada a partir de um host (tela de primeira execução). */
+export const presetConfig = (host: string) =>
+  invoke<AppConfig>("preset_config", { host });
+
 export const svnVersion = () => invoke<string>("svn_version");
 
 export const testConnection = (url: string) =>
