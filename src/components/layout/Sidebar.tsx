@@ -1,6 +1,7 @@
 import { open } from "@tauri-apps/plugin-dialog";
 import {
   AlertTriangle,
+  Database,
   Download,
   FolderOpen,
   GitBranch,
@@ -107,7 +108,7 @@ export function Sidebar() {
         <BrandMark />
       </div>
 
-      <div className="px-3">
+      <div className="space-y-0.5 px-3">
         <button
           onClick={() => setView("overview")}
           className={cn(
@@ -117,6 +118,16 @@ export function Sidebar() {
         >
           <LayoutDashboard className="size-4" />
           Visão geral
+        </button>
+        <button
+          onClick={() => setView("repos")}
+          className={cn(
+            "flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-[13px] font-medium transition-colors",
+            view === "repos" ? "bg-brand/12 text-brand" : "text-muted hover:bg-panel-2 hover:text-ink",
+          )}
+        >
+          <Database className="size-4" />
+          Repositórios
         </button>
       </div>
 
@@ -166,10 +177,15 @@ export function Sidebar() {
           <WcRow
             key={wc.path}
             wc={wc}
-            active={selected?.path === wc.path && view !== "overview"}
+            active={
+              selected?.path === wc.path &&
+              view !== "overview" &&
+              view !== "settings" &&
+              view !== "repos"
+            }
             onClick={() => {
               select(wc.path);
-              if (view === "overview" || view === "settings") setView("changes");
+              if (view === "overview" || view === "settings" || view === "repos") setView("changes");
             }}
           />
         ))}

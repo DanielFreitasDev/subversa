@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import {
+  Database,
   FolderOpen,
   Info,
   Monitor,
@@ -18,6 +19,7 @@ import { Input, Switch } from "@/components/ui/Field";
 import { Segmented } from "@/components/ui/Segmented";
 import { reportOutput, tryRun } from "@/lib/op";
 import type { Project } from "@/lib/types";
+import { decodeUrl } from "@/lib/utils";
 import { useConfigStore } from "@/store/config";
 import { toast } from "@/store/toast";
 import { useWorkspaceStore } from "@/store/workspace";
@@ -69,6 +71,8 @@ export function SettingsView() {
   const [host, setHost] = useState(config?.host ?? "");
   const [tool, setTool] = useState(config?.externalDiffTool ?? "meld");
   const [projects, setProjects] = useState<Project[]>(config?.projects ?? []);
+  const [repoBase, setRepoBase] = useState(config?.repoBase ?? "");
+  const [newRoot, setNewRoot] = useState("");
   const [testing, setTesting] = useState(false);
   const [version, setVersion] = useState("");
 
@@ -77,6 +81,7 @@ export function SettingsView() {
       setHost(config.host);
       setTool(config.externalDiffTool);
       setProjects(config.projects);
+      setRepoBase(config.repoBase);
     }
   }, [config]);
 
@@ -110,6 +115,26 @@ export function SettingsView() {
   const saveProjects = async () => {
     await save({ projects });
     toast.success("Projetos salvos");
+  };
+
+  const roots = config.repoRoots;
+
+  const addRoot = async () => {
+    const v = newRoot.trim();
+    if (!v) return;
+    const base = repoBase.endsWith("/") ? repoBase : `${repoBase}/`;
+    const url = v.includes("://") ? v : `${base}${v.replace(/^\/+/, "")}`;
+    if (roots.includes(url)) {
+      toast.warn("Localização já cadastrada");
+      return;
+    }
+    await save({ repoRoots: [...roots, url] });
+    setNewRoot("");
+    toast.success("Localização adicionada");
+  };
+
+  const removeRoot = async (url: string) => {
+    await save({ repoRoots: roots.filter((r) => r !== url) });
   };
 
   return (
@@ -170,6 +195,58 @@ export function SettingsView() {
               Testar
             </Button>
           </Row>
+        </Section>
+
+        {/* Localizações de repositório */}
+        <Section
+          icon={<Database className="size-4" />}
+          title="Localizações de repositório"
+          description="Raízes navegáveis no Navegador de Repositórios"
+        >
+          <Row label="URL base" hint="Expande nomes curtos — ex.: svn+ssh://host/usr/svn/">
+            <Input
+              value={repoBase}
+              onChange={(e) => setRepoBase(e.target.value)}
+              onBlur={() => repoBase !== config.repoBase && save({ repoBase })}
+              className="w-72 font-mono text-[11px]"
+            />
+          </Row>
+          <div className="space-y-1.5 pt-3">
+            {roots.map((url) => (
+              <div key={url} className="flex items-center gap-2 rounded-lg border border-line px-3 py-2">
+                <Database className="size-3.5 shrink-0 text-faint" />
+                <span
+                  className="min-w-0 flex-1 truncate font-mono text-[11px] text-muted"
+                  title={decodeUrl(url)}
+                >
+                  {decodeUrl(url)}
+                </span>
+                <button
+                  onClick={() => removeRoot(url)}
+                  className="flex size-7 shrink-0 items-center justify-center rounded-md text-faint hover:bg-conflict/15 hover:text-conflict"
+                  title="Remover localização"
+                >
+                  <Trash2 className="size-3.5" />
+                </button>
+              </div>
+            ))}
+            {roots.length === 0 && (
+              <div className="px-1 py-2 text-[12px] text-faint">Nenhuma localização cadastrada.</div>
+            )}
+          </div>
+          <div className="mt-3 flex items-center gap-2">
+            <Input
+              value={newRoot}
+              onChange={(e) => setNewRoot(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && addRoot()}
+              placeholder="nome (ex.: veiculo) ou URL completa"
+              className="h-9 flex-1 font-mono text-[12px]"
+            />
+            <Button variant="outline" size="sm" onClick={addRoot}>
+              <Plus className="size-4" />
+              Adicionar
+            </Button>
+          </div>
         </Section>
 
         {/* Pasta de trabalho */}

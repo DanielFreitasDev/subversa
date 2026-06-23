@@ -14,6 +14,7 @@ import { useWorkspaceStore } from "@/store/workspace";
 
 export function CheckoutDialog() {
   const open = useUiStore((s) => s.checkoutOpen);
+  const checkoutUrl = useUiStore((s) => s.checkoutUrl);
   const setOpen = useUiStore((s) => s.setCheckout);
   const setView = useUiStore((s) => s.setView);
   const projects = useConfigStore((s) => s.config?.projects ?? []);
@@ -27,13 +28,21 @@ export function CheckoutDialog() {
 
   useEffect(() => {
     if (open) {
-      setMode("preset");
-      const first = projects[0];
-      setPresetKey(first?.key ?? null);
-      setName(first?.key ?? "");
-      setCustomUrl("");
+      if (checkoutUrl) {
+        // Veio do navegador de repositórios: pré-preenche modo "Outra URL".
+        const decoded = decodeUrl(checkoutUrl);
+        setMode("custom");
+        setCustomUrl(decoded);
+        setName(decoded.replace(/\/+$/, "").split("/").pop() ?? "");
+      } else {
+        setMode("preset");
+        const first = projects[0];
+        setPresetKey(first?.key ?? null);
+        setName(first?.key ?? "");
+        setCustomUrl("");
+      }
     }
-  }, [open, projects]);
+  }, [open, projects, checkoutUrl]);
 
   const url = mode === "preset" ? projects.find((p) => p.key === presetKey)?.url ?? "" : customUrl.trim();
   const dest = `${baseDir.replace(/\/$/, "")}/${name.trim()}`;

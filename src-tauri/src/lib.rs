@@ -36,6 +36,8 @@ pub fn run() {
             svn::commands::list_dir,
             svn::commands::cat_file,
             svn::commands::blame,
+            svn::commands::get_url_info,
+            svn::commands::diff_urls,
             // escrita / servidor
             svn::commands::checkout,
             svn::commands::update,
@@ -49,6 +51,10 @@ pub fn run() {
             svn::commands::resolve,
             svn::commands::cleanup,
             svn::commands::delete_remote,
+            svn::commands::export_path,
+            svn::commands::import_path,
+            svn::commands::make_dir,
+            svn::commands::move_remote,
             // config + utilidades
             svn::commands::load_config,
             svn::commands::save_config,

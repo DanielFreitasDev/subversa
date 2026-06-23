@@ -103,6 +103,18 @@ export interface BlameLine {
   content: string;
 }
 
+/** Info de um nó remoto (`svn info URL`) — navegador de repositórios. */
+export interface UrlInfo {
+  url: string;
+  repoRoot: string;
+  relativeUrl: string;
+  revision: string;
+  kind: "dir" | "file" | string;
+  lastChangedRev: string | null;
+  lastChangedAuthor: string | null;
+  lastChangedDate: string | null;
+}
+
 export interface Project {
   key: string;
   name: string;
@@ -113,6 +125,8 @@ export interface Project {
 export interface AppConfig {
   baseDir: string;
   host: string;
+  /** URL base do servidor (ex.: `svn+ssh://{host}/usr/svn/`). */
+  repoBase: string;
   repoRoots: string[];
   projects: Project[];
   sshMode: SshMode;

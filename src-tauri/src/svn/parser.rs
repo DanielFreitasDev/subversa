@@ -374,6 +374,14 @@ pub fn hint_from_stderr(stderr: &str) -> Option<String> {
         Some("Conflito pendente — resolva os arquivos marcados e marque como resolvido.".into())
     } else if s.contains("E160013") {
         Some("Caminho não existe no servidor — confira a URL (use o navegador de branches).".into())
+    } else if s.contains("E170001")
+        || s.contains("E175013")
+        || s.contains("E165001")
+        || s.contains("E000013")
+        || s.contains("Permission denied")
+        || s.contains("403 Forbidden")
+    {
+        Some("Sem permissão de escrita nesta pasta do repositório.".into())
     } else if s.contains("E155011") || s.contains("E160024") || s.contains("E170004") {
         Some("Cópia desatualizada — receba do servidor (Atualizar) antes de enviar.".into())
     } else if s.contains("E195016") || s.contains("E195023") || s.contains("reintegr") {

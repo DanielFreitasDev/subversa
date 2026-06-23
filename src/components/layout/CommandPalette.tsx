@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   ArrowDownToLine,
+  Database,
   Download,
   FileDiff,
   FolderOpen,
@@ -10,6 +11,7 @@ import {
   GitMerge,
   History,
   LayoutDashboard,
+  MapPin,
   RotateCcw,
   Search,
   Settings,
@@ -24,6 +26,7 @@ import { cn } from "@/lib/utils";
 import { useActions } from "@/hooks/useActions";
 import { useSelectedWc } from "@/hooks/useSelectedWc";
 import { useConfigStore } from "@/store/config";
+import { useRepoBrowserStore } from "@/store/repoBrowser";
 import { useUiStore } from "@/store/ui";
 import { useWorkspaceStore } from "@/store/workspace";
 
@@ -46,6 +49,7 @@ export function CommandPalette() {
   const wc = useSelectedWc();
   const refresh = useWorkspaceStore((s) => s.refresh);
   const projects = useConfigStore((s) => s.config?.projects ?? []);
+  const openRepoDialog = useRepoBrowserStore((s) => s.openDialog);
   const { update, cleanup, revertAll, switchTo } = useActions();
 
   const [query, setQuery] = useState("");
@@ -66,12 +70,31 @@ export function CommandPalette() {
         run: close(() => setView("overview")),
       },
       {
+        id: "nav-repos",
+        title: "Abrir Navegador de Repositórios",
+        icon: <Database className="size-4" />,
+        keywords: "repositorio repos navegar arvore remoto svn repositories",
+        section: "Navegação",
+        run: close(() => setView("repos")),
+      },
+      {
         id: "checkout",
         title: "Baixar projeto (checkout)",
         icon: <Download className="size-4" />,
         keywords: "clone baixar checkout novo",
         section: "Repositório",
         run: close(() => setCheckout(true)),
+      },
+      {
+        id: "add-location",
+        title: "Adicionar localização de repositório",
+        icon: <MapPin className="size-4" />,
+        keywords: "localizacao nova url repositorio cadastrar",
+        section: "Repositório",
+        run: close(() => {
+          setView("repos");
+          openRepoDialog("location", null);
+        }),
       },
       {
         id: "refresh",
@@ -190,7 +213,7 @@ export function CommandPalette() {
     }
 
     return list;
-  }, [wc, projects, setPalette, setView, setCheckout, setCreateBranch, refresh, update, cleanup, revertAll, switchTo]);
+  }, [wc, projects, setPalette, setView, setCheckout, setCreateBranch, openRepoDialog, refresh, update, cleanup, revertAll, switchTo]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();

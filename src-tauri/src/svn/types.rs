@@ -4,6 +4,19 @@
 
 use serde::{Deserialize, Serialize};
 
+/// Nomes das raízes de repositório oficiais do servidor (sob `repo_base`).
+/// Usado no default e na semeadura não-destrutiva do `config.rs`.
+pub const OFFICIAL_ROOTS: [&str; 8] = [
+    "acesso",
+    "aplicativos",
+    "complac",
+    "contabilidade",
+    "dividaativa",
+    "getranlibs",
+    "transacoesweb",
+    "veiculo",
+];
+
 /// Resultado bruto da execução de um comando `svn`.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -148,6 +161,26 @@ pub struct BlameLine {
     pub content: String,
 }
 
+/// Informações de um nó remoto (`svn info URL`), usado pelo navegador de
+/// repositórios para mostrar a revisão e validar localizações.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UrlInfo {
+    /// URL completa consultada.
+    pub url: String,
+    /// Raiz do repositório.
+    pub repo_root: String,
+    /// URL relativa à raiz (ex.: `^/trunk`).
+    pub relative_url: String,
+    /// Revisão do nó (HEAD por padrão).
+    pub revision: String,
+    /// `dir` ou `file`.
+    pub kind: String,
+    pub last_changed_rev: Option<String>,
+    pub last_changed_author: Option<String>,
+    pub last_changed_date: Option<String>,
+}
+
 /// Projeto pré-configurado (preset do fluxo do usuário).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -178,6 +211,11 @@ pub struct AppConfig {
     pub base_dir: String,
     /// Host SSH (ex.: `daniel.souza@172.25.136.61`).
     pub host: String,
+    /// URL base do servidor SVN (ex.: `svn+ssh://{host}/usr/svn/`). As raízes
+    /// oficiais derivam dela; o host embutido deve casar com `host` para o
+    /// ControlMaster reaproveitar o mesmo socket SSH.
+    #[serde(default)]
+    pub repo_base: String,
     /// Raízes de repositório conhecidas (para o navegador).
     pub repo_roots: Vec<String>,
     /// Projetos-preset.
@@ -200,8 +238,15 @@ impl Default for AppConfig {
             .unwrap_or_else(|| ".".to_string());
 
         let host = "daniel.souza@172.25.136.61".to_string();
-        let raiz_veiculo = format!("svn+ssh://{host}/usr/svn/veiculo");
-        let raiz_libs = format!("svn+ssh://{host}/usr/svn/getranlibs");
+        let repo_base = format!("svn+ssh://{host}/usr/svn/");
+        // Raízes oficiais do servidor (8). As duas usadas pelos presets
+        // (`veiculo` e `getranlibs`) saem da mesma base.
+        let repo_roots: Vec<String> = OFFICIAL_ROOTS
+            .iter()
+            .map(|name| format!("{repo_base}{name}"))
+            .collect();
+        let raiz_veiculo = format!("{repo_base}veiculo");
+        let raiz_libs = format!("{repo_base}getranlibs");
 
         let projects = vec![
             Project {
@@ -245,7 +290,8 @@ impl Default for AppConfig {
         AppConfig {
             base_dir: home,
             host,
-            repo_roots: vec![raiz_veiculo, raiz_libs],
+            repo_base,
+            repo_roots,
             projects,
             ssh_mode: SshMode::Auto,
             theme: "dark".into(),

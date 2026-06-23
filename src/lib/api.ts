@@ -13,6 +13,7 @@ import type {
   ListEntry,
   LogEntry,
   StatusResult,
+  UrlInfo,
   WorkingCopy,
 } from "./types";
 
@@ -33,8 +34,18 @@ export const getDiff = (path: string, files?: string[], ignoreWs = false) =>
 export const diffRevision = (target: string, revision: string, ignoreWs = false) =>
   invoke<string>("diff_revision", { target, revision, ignoreWs });
 
-export const getLog = (target: string, limit = 50, search?: string) =>
-  invoke<LogEntry[]>("get_log", { target, limit, search: search ?? null });
+export const getLog = (
+  target: string,
+  limit = 50,
+  search?: string,
+  revRange?: string,
+) =>
+  invoke<LogEntry[]>("get_log", {
+    target,
+    limit,
+    search: search ?? null,
+    revRange: revRange ?? null,
+  });
 
 export const listDir = (url: string) => invoke<ListEntry[]>("list_dir", { url });
 
@@ -42,6 +53,13 @@ export const catFile = (target: string, revision?: string) =>
   invoke<string>("cat_file", { target, revision: revision ?? null });
 
 export const blame = (target: string) => invoke<BlameLine[]>("blame", { target });
+
+/** Info de um nó remoto (revisão no breadcrumb; validação de localização). */
+export const getUrlInfo = (url: string) => invoke<UrlInfo>("get_url_info", { url });
+
+/** Diff entre duas URLs (Comparar com…); cada URL aceita `URL@REV`. */
+export const diffUrls = (oldUrl: string, newUrl: string, ignoreWs = false) =>
+  invoke<string>("diff_urls", { oldUrl, newUrl, ignoreWs });
 
 // --- escrita / servidor ----------------------------------------------------
 
@@ -81,6 +99,32 @@ export const cleanup = (path: string) => invoke<CommandOutput>("cleanup", { path
 
 export const deleteRemote = (url: string, message: string) =>
   invoke<CommandOutput>("delete_remote", { url, message });
+
+/** Exporta uma URL para uma pasta local (`svn export`). */
+export const exportPath = (
+  url: string,
+  dest: string,
+  force = false,
+  revision?: string,
+) =>
+  invoke<CommandOutput>("export_path", {
+    url,
+    dest,
+    force,
+    revision: revision ?? null,
+  });
+
+/** Importa uma pasta local para uma URL do repositório (`svn import`). */
+export const importPath = (localPath: string, url: string, message: string) =>
+  invoke<CommandOutput>("import_path", { localPath, url, message });
+
+/** Cria uma pasta no repositório (`svn mkdir --parents`). */
+export const makeDir = (url: string, message: string) =>
+  invoke<CommandOutput>("make_dir", { url, message });
+
+/** Move/renomeia um nó no repositório (`svn move --parents`). */
+export const moveRemote = (srcUrl: string, dstUrl: string, message: string) =>
+  invoke<CommandOutput>("move_remote", { srcUrl, dstUrl, message });
 
 // --- config + utilidades ---------------------------------------------------
 

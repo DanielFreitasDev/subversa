@@ -270,11 +270,15 @@ pub async fn diff_revision(
 }
 
 /// Histórico (`svn log -v`). `target` pode ser um caminho de WC ou uma URL.
+///
+/// `rev_range` (ex.: `{2026-01-01}:{2026-06-01}` ou `1000:2000`) filtra por
+/// intervalo de revisão/data; `search` casa autor+mensagem (`--search`).
 #[tauri::command]
 pub async fn get_log(
     target: String,
     limit: u32,
     search: Option<String>,
+    rev_range: Option<String>,
     state: State<'_, AppState>,
 ) -> Result<Vec<LogEntry>, String> {
     let mode = mode_of(&state);
@@ -287,6 +291,10 @@ pub async fn get_log(
         limit_s,
         "--non-interactive".into(),
     ];
+    if let Some(range) = rev_range.filter(|s| !s.trim().is_empty()) {
+        args.push("-r".into());
+        args.push(range);
+    }
     if let Some(term) = search.filter(|s| !s.trim().is_empty()) {
         args.push("--search".into());
         args.push(term);
@@ -334,6 +342,57 @@ pub async fn blame(target: String, state: State<'_, AppState>) -> Result<Vec<Bla
         .await
         .unwrap_or_default();
     parser::parse_blame(&xml, &content)
+}
+
+/// `svn info` de uma URL remota → [`UrlInfo`] (revisão no breadcrumb/painel e
+/// validação de localização no navegador de repositórios).
+#[tauri::command]
+pub async fn get_url_info(url: String, state: State<'_, AppState>) -> Result<UrlInfo, String> {
+    let mode = mode_of(&state);
+    let xml = run_checked(&["info", "--xml", "--non-interactive", "--", &url], None, mode).await?;
+    let info = parser::parse_info(&xml)?;
+    let entry = info
+        .entries
+        .into_iter()
+        .next()
+        .ok_or_else(|| "svn info não retornou dados".to_string())?;
+    Ok(UrlInfo {
+        url: entry.url.clone().unwrap_or(url),
+        repo_root: entry
+            .repository
+            .as_ref()
+            .and_then(|r| r.root.clone())
+            .unwrap_or_default(),
+        relative_url: entry.relative_url.unwrap_or_default(),
+        revision: entry.revision,
+        kind: entry.kind,
+        last_changed_rev: entry.commit.as_ref().map(|c| c.revision.clone()),
+        last_changed_author: entry.commit.as_ref().and_then(|c| c.author.clone()),
+        last_changed_date: entry.commit.and_then(|c| c.date),
+    })
+}
+
+/// Diff entre duas URLs (Comparar com…). Usa `--old/--new` (forma canônica);
+/// cada uma aceita `URL@REV`. Não usa `--` porque as flags consomem o próximo
+/// argumento. `ignore_ws` adiciona `-x -w`.
+#[tauri::command]
+pub async fn diff_urls(
+    old_url: String,
+    new_url: String,
+    ignore_ws: bool,
+    state: State<'_, AppState>,
+) -> Result<String, String> {
+    let mode = mode_of(&state);
+    let mut args: Vec<&str> = vec!["diff", "--internal-diff", "--non-interactive"];
+    if ignore_ws {
+        args.push("-x");
+        args.push("-w");
+    }
+    args.push("--old");
+    args.push(old_url.as_str());
+    args.push("--new");
+    args.push(new_url.as_str());
+    run_checked(&args, None, mode).await
 }
 
 // ---------------------------------------------------------------------------
@@ -543,6 +602,118 @@ pub async fn delete_remote(
     let mode = mode_of(&state);
     run(
         &["delete", "--non-interactive", "-m", &message, "--", &url],
+        None,
+        mode,
+    )
+    .await
+}
+
+/// Exporta uma URL (ou arquivo) para uma pasta local (`svn export`). Sem
+/// versionamento — grava só em disco, então não pede confirmação de servidor.
+/// `force` (`--force`) permite gravar em pasta não-vazia.
+#[tauri::command]
+pub async fn export_path(
+    url: String,
+    dest: String,
+    force: bool,
+    revision: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<CommandOutput, String> {
+    let mode = mode_of(&state);
+    let mut args: Vec<String> = vec!["export".into(), "--non-interactive".into()];
+    if force {
+        args.push("--force".into());
+    }
+    if let Some(r) = revision.filter(|s| !s.trim().is_empty()) {
+        args.push("-r".into());
+        args.push(r);
+    }
+    args.push("--".into());
+    args.push(url);
+    args.push(dest);
+    let refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+    run(&refs, None, mode).await
+}
+
+/// Importa uma pasta local para uma URL do repositório (`svn import`).
+#[tauri::command]
+pub async fn import_path(
+    local_path: String,
+    url: String,
+    message: String,
+    state: State<'_, AppState>,
+) -> Result<CommandOutput, String> {
+    if message.trim().is_empty() {
+        return Err("a mensagem do commit não pode ser vazia".into());
+    }
+    let mode = mode_of(&state);
+    run(
+        &[
+            "import",
+            "--non-interactive",
+            "-m",
+            &message,
+            "--",
+            &local_path,
+            &url,
+        ],
+        None,
+        mode,
+    )
+    .await
+}
+
+/// Cria uma pasta no repositório (`svn mkdir --parents`).
+#[tauri::command]
+pub async fn make_dir(
+    url: String,
+    message: String,
+    state: State<'_, AppState>,
+) -> Result<CommandOutput, String> {
+    if message.trim().is_empty() {
+        return Err("a mensagem do commit não pode ser vazia".into());
+    }
+    let mode = mode_of(&state);
+    run(
+        &[
+            "mkdir",
+            "--parents",
+            "--non-interactive",
+            "-m",
+            &message,
+            "--",
+            &url,
+        ],
+        None,
+        mode,
+    )
+    .await
+}
+
+/// Move/renomeia um nó no repositório (`svn move --parents`). Cobre tanto Mover
+/// quanto Renomear (a diferença é só a URL de destino).
+#[tauri::command]
+pub async fn move_remote(
+    src_url: String,
+    dst_url: String,
+    message: String,
+    state: State<'_, AppState>,
+) -> Result<CommandOutput, String> {
+    if message.trim().is_empty() {
+        return Err("a mensagem do commit não pode ser vazia".into());
+    }
+    let mode = mode_of(&state);
+    run(
+        &[
+            "move",
+            "--parents",
+            "--non-interactive",
+            "-m",
+            &message,
+            "--",
+            &src_url,
+            &dst_url,
+        ],
         None,
         mode,
     )

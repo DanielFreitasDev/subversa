@@ -8,11 +8,16 @@ import { ConfirmDialog } from "@/components/feedback/ConfirmDialog";
 import { Toaster } from "@/components/feedback/Toaster";
 import { CheckoutDialog } from "@/components/dialogs/CheckoutDialog";
 import { CreateBranchDialog } from "@/components/dialogs/CreateBranchDialog";
+import { RepoCompareDialog } from "@/components/dialogs/RepoCompareDialog";
+import { RepoHistoryDialog } from "@/components/dialogs/RepoHistoryDialog";
+import { RepoLocationDialog } from "@/components/dialogs/RepoLocationDialog";
+import { RepoOpDialog } from "@/components/dialogs/RepoOpDialog";
 import { BranchesView } from "@/views/BranchesView";
 import { ChangesView } from "@/views/ChangesView";
 import { HistoryView } from "@/views/HistoryView";
 import { MergeView } from "@/views/MergeView";
 import { OverviewView } from "@/views/OverviewView";
+import { ReposView } from "@/views/ReposView";
 import { SettingsView } from "@/views/SettingsView";
 import { useUiStore } from "@/store/ui";
 
@@ -30,6 +35,8 @@ function ViewRouter() {
         return <BranchesView />;
       case "merge":
         return <MergeView />;
+      case "repos":
+        return <ReposView />;
       case "settings":
         return <SettingsView />;
     }
@@ -66,6 +73,10 @@ export function AppShell() {
       <CommandPalette />
       <CheckoutDialog />
       <CreateBranchDialog />
+      <RepoLocationDialog />
+      <RepoOpDialog />
+      <RepoCompareDialog />
+      <RepoHistoryDialog />
       <Toaster />
       <ConfirmDialog />
     </div>

@@ -2,7 +2,7 @@
 
 use std::path::PathBuf;
 
-use crate::svn::types::AppConfig;
+use crate::svn::types::{AppConfig, OFFICIAL_ROOTS};
 
 fn config_dir() -> PathBuf {
     let base = dirs::config_dir().unwrap_or_else(std::env::temp_dir);
@@ -16,19 +16,48 @@ fn config_path() -> PathBuf {
 }
 
 /// Carrega a configuração do disco; cai para os padrões se não existir/for inválida.
+///
+/// Faz um *merge não-destrutivo*: garante `repo_base` e acrescenta as raízes
+/// oficiais ausentes, preservando a ordem e as raízes do usuário. Re-grava
+/// quando muda (ou quando o arquivo não existia).
 pub fn load() -> AppConfig {
     let path = config_path();
-    match std::fs::read_to_string(&path) {
+    let existed = path.exists();
+    let mut cfg = match std::fs::read_to_string(&path) {
         Ok(text) => serde_json::from_str(&text).unwrap_or_else(|_| {
             // arquivo corrompido: preserva o padrão, sem derrubar o app.
             AppConfig::default()
         }),
-        Err(_) => {
-            let cfg = AppConfig::default();
-            let _ = save(&cfg);
-            cfg
+        Err(_) => AppConfig::default(),
+    };
+    let changed = reconcile(&mut cfg);
+    if !existed || changed {
+        let _ = save(&cfg);
+    }
+    cfg
+}
+
+/// Garante `repo_base` (derivando do host se vazio) e semeia as raízes oficiais
+/// que faltarem. Devolve `true` se alterou a config. Compara `%20`↔espaço para
+/// não duplicar URLs com espaço. V1 não guarda lista de descartados: uma raiz
+/// oficial removida volta no próximo boot (decisão documentada no plano).
+fn reconcile(cfg: &mut AppConfig) -> bool {
+    let mut changed = false;
+    if cfg.repo_base.trim().is_empty() {
+        cfg.repo_base = format!("svn+ssh://{}/usr/svn/", cfg.host);
+        changed = true;
+    }
+    let base = cfg.repo_base.clone();
+    let norm = |s: &str| s.replace("%20", " ");
+    for name in OFFICIAL_ROOTS {
+        let url = format!("{base}{name}");
+        let present = cfg.repo_roots.iter().any(|r| norm(r) == norm(&url));
+        if !present {
+            cfg.repo_roots.push(url);
+            changed = true;
         }
     }
+    changed
 }
 
 /// Grava a configuração no disco (escrita atômica via arquivo temporário).

@@ -8,6 +8,7 @@ export type ViewId =
   | "history"
   | "branches"
   | "merge"
+  | "repos"
   | "settings";
 
 export type DiffMode = "unified" | "split";
@@ -23,6 +24,8 @@ interface UiState {
   view: ViewId;
   paletteOpen: boolean;
   checkoutOpen: boolean;
+  /** URL pré-preenchida no checkout (ex.: vinda do navegador de repositórios). */
+  checkoutUrl: string | null;
   createBranchOpen: boolean;
   /** Modo do visualizador de diff, compartilhado entre Alterações e Histórico. */
   diffMode: DiffMode;
@@ -30,7 +33,7 @@ interface UiState {
   setView: (v: ViewId) => void;
   setPalette: (open: boolean) => void;
   togglePalette: () => void;
-  setCheckout: (open: boolean) => void;
+  setCheckout: (open: boolean, url?: string | null) => void;
   setCreateBranch: (open: boolean) => void;
   setDiffMode: (m: DiffMode) => void;
 }
@@ -39,13 +42,15 @@ export const useUiStore = create<UiState>((set) => ({
   view: "overview",
   paletteOpen: false,
   checkoutOpen: false,
+  checkoutUrl: null,
   createBranchOpen: false,
   diffMode: initialDiffMode(),
 
   setView: (view) => set({ view }),
   setPalette: (paletteOpen) => set({ paletteOpen }),
   togglePalette: () => set((s) => ({ paletteOpen: !s.paletteOpen })),
-  setCheckout: (checkoutOpen) => set({ checkoutOpen }),
+  setCheckout: (checkoutOpen, checkoutUrl = null) =>
+    set({ checkoutOpen, checkoutUrl: checkoutOpen ? checkoutUrl : null }),
   setCreateBranch: (createBranchOpen) => set({ createBranchOpen }),
   setDiffMode: (diffMode) => {
     if (typeof localStorage !== "undefined") localStorage.setItem(DIFF_MODE_KEY, diffMode);
