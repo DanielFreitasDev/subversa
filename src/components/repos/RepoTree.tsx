@@ -49,7 +49,12 @@ function NodeRow({
 }) {
   const url = `${parentUrl}/${entry.name}`;
   const isDir = entry.kind === "dir";
-  const node: RepoNode = { url, name: entry.name, kind: nodeKind(entry.kind) };
+  const node: RepoNode = {
+    url,
+    name: entry.name,
+    kind: nodeKind(entry.kind),
+    size: entry.size,
+  };
 
   const expanded = useRepoBrowserStore((s) => s.expanded.has(url));
   const selected = useRepoBrowserStore((s) => s.selected?.url === url);

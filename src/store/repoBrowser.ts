@@ -9,6 +9,7 @@
 import { create } from "zustand";
 
 import * as api from "@/lib/api";
+import { friendlyErrorMessage } from "@/lib/errors";
 import type { ListEntry } from "@/lib/types";
 import { baseName } from "@/lib/utils";
 
@@ -17,6 +18,7 @@ export interface RepoNode {
   url: string;
   name: string;
   kind: "dir" | "file";
+  size?: number | null;
 }
 
 /** Diálogos parametrizados do navegador. */
@@ -120,7 +122,10 @@ export const useRepoBrowserStore = create<RepoBrowserState>((set, get) => ({
       set((s) => {
         const loadingUrls = new Set(s.loadingUrls);
         loadingUrls.delete(url);
-        return { errors: new Map(s.errors).set(url, String(e)), loadingUrls };
+        return {
+          errors: new Map(s.errors).set(url, friendlyErrorMessage(e)),
+          loadingUrls,
+        };
       });
     }
   },

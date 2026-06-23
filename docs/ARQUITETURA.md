@@ -40,8 +40,8 @@ roda o `svn`, faz o parsing da saída `--xml` e devolve **tipos fortes** ao fron
 | `svn/types.rs` | Tipos públicos (serializados em `camelCase`) e os *defaults* dos projetos do usuário. |
 | `svn/parser.rs` | Desserializa `svn … --xml` (status, info, log, list, blame) com `quick-xml` + serde. Mapeia códigos de erro (`E155011`…) em dicas. |
 | `svn/conn.rs` | Monta o valor de `SVN_SSH` (sshpass/chave + ControlMaster persistente). |
-| `svn/runner.rs` | Executa `svn` de forma assíncrona (`tokio::process`), captura stdout/stderr e devolve `CommandOutput`. |
-| `svn/commands.rs` | Os `#[tauri::command]` — uma função por operação do fluxo. |
+| `svn/runner.rs` | Executa `svn` de forma assíncrona (`tokio::process`), captura stdout/stderr com limite e devolve `CommandOutput`. |
+| `svn/commands.rs` | Os `#[tauri::command]` — uma função por operação do fluxo, com validação central de URL, caminho local, mensagens e opções. |
 
 ### Por que parsing por XML?
 
@@ -61,6 +61,23 @@ isso o app preserva o idioma do `svn` e ainda assim entende as falhas.
 
 *Config & utilidades:* `load_config`, `save_config`, `svn_version`,
 `test_connection`, `reveal_in_file_manager`, `open_external_diff`, `suggested_base_dir`.
+
+### Validações e limites
+
+O frontend pode prevenir erros, mas o backend é a fronteira final. Operações
+remotas de leitura sensível e escrita só aceitam URLs com esquema `svn+ssh`,
+`svn`, `http`, `https` ou `file`, e apenas sob `repoRoots` ou URLs de `projects`
+configurados. Checkouts e exports exigem destino absoluto dentro de `baseDir`;
+imports exigem uma pasta local absoluta existente; commits/copy/delete/mkdir/move
+e import bloqueiam mensagem vazia; `resolve --accept` é restrito aos valores do
+SVN usados pela UI.
+
+O runner não usa shell e mantém os argumentos separados com `Command::new`.
+Também não usa captura ilimitada de `cmd.output()`: stdout/stderr são lidos de
+forma assíncrona com teto por operação. Os limites são 20 MiB para
+diff/log/status/list/info, 5 MiB para `cat_file` e 10 MiB para `blame`; ao
+exceder, o comando retorna `Err(String)` com sugestão para reduzir o alvo ou usar
+ferramenta externa.
 
 ### Autenticação
 
@@ -147,6 +164,9 @@ necessárias.
 ## Build
 
 - `npm run tauri dev` — Vite (HMR) + binário debug.
+- `npm run check` — `npm run build`, `cargo fmt --check`, `cargo clippy -D warnings`
+  e `cargo test`.
+- `npm run e2e` — testes visuais Playwright com backend Tauri mockado.
 - `npm run tauri build` — `tsc && vite build` (frontend embutido) + Rust release
   (LTO, `opt-level="s"`, `strip`) → binário ~5 MB + pacotes em
   `target/release/bundle/`.

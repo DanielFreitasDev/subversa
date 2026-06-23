@@ -11,12 +11,15 @@ import { tokenizeText, type Span } from "@/components/diff/highlight";
 import { Empty } from "@/components/ui/Empty";
 import { Segmented } from "@/components/ui/Segmented";
 import { Loading } from "@/components/ui/Spinner";
+import { friendlyErrorMessage } from "@/lib/errors";
 import type { BlameLine } from "@/lib/types";
 import { decodeUrlSafe } from "@/lib/utils";
 import type { RepoNode } from "@/store/repoBrowser";
 
 /** Acima disto não realça/rola tudo (evita travar a UI com arquivos enormes). */
 const MAX_LINES = 4000;
+const CAT_LIMIT_BYTES = 5 * 1024 * 1024;
+const BLAME_LIMIT_BYTES = 10 * 1024 * 1024;
 
 type Tab = "content" | "blame";
 
@@ -54,6 +57,14 @@ export function FilePreview({ node }: { node: RepoNode }) {
     setError(null);
     (async () => {
       try {
+        const knownSize = node.size ?? null;
+        const limit = tab === "content" ? CAT_LIMIT_BYTES : BLAME_LIMIT_BYTES;
+        if (knownSize != null && knownSize > limit) {
+          const label = tab === "content" ? "5 MiB" : "10 MiB";
+          throw new Error(
+            `Arquivo grande demais para abrir no Subversa (limite de ${label}). Use uma ferramenta externa ou reduza o alvo.`,
+          );
+        }
         if (tab === "content") {
           const t = await api.catFile(node.url);
           if (alive) setText(t);
@@ -62,7 +73,7 @@ export function FilePreview({ node }: { node: RepoNode }) {
           if (alive) setBlame(b);
         }
       } catch (e) {
-        if (alive) setError(String(e));
+        if (alive) setError(friendlyErrorMessage(e));
       } finally {
         if (alive) setLoading(false);
       }

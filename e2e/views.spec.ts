@@ -81,6 +81,26 @@ test.describe("tema escuro", () => {
     await expect(page).toHaveScreenshot("repos.png");
   });
 
+  test("repositórios mostra bloqueio de arquivo grande", async ({ page }) => {
+    await gotoApp(page);
+    await page.getByRole("button", { name: "Repositórios", exact: true }).click();
+    await page.waitForTimeout(400);
+
+    await page.getByText("README.md", { exact: true }).click();
+
+    await expect(page.getByText(/Arquivo grande demais/)).toBeVisible();
+  });
+
+  test("repositórios mostra bloqueio de URL fora de escopo", async ({ page }) => {
+    await gotoApp(page);
+    await page.getByRole("button", { name: "Repositórios", exact: true }).click();
+    await page.waitForTimeout(400);
+
+    await page.getByTitle("svn+ssh://svn.tjsc.local/usr/svn/getran").click();
+
+    await expect(page.getByText(/URL fora das localizações configuradas/)).toBeVisible();
+  });
+
   test("configurações", async ({ page }) => {
     await gotoApp(page);
     await page.getByRole("button", { name: "Configurações", exact: true }).click();

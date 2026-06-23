@@ -149,7 +149,7 @@ export function buildFixtures(theme: Theme): MockData {
     { name: "branches", kind: "dir", size: null, revision: "12044", author: "maria.silva", date: "2026-06-23T09:15:00.000Z" },
     { name: "tags", kind: "dir", size: null, revision: "4500", author: "ana.costa", date: "2026-05-30T12:00:00.000Z" },
     { name: "pom.xml", kind: "file", size: 4096, revision: "4795", author: "ana.costa", date: "2026-06-17T13:25:00.000Z" },
-    { name: "README.md", kind: "file", size: 2048, revision: "4790", author: "maria.silva", date: "2026-06-16T10:00:00.000Z" },
+    { name: "README.md", kind: "file", size: 6 * 1024 * 1024, revision: "4790", author: "maria.silva", date: "2026-06-16T10:00:00.000Z" },
   ];
 
   return { config, wcs, status, diff, log, branchList, rootList };
@@ -189,6 +189,9 @@ export function tauriInit(fx: MockData) {
         return fx.log;
       case "list_dir": {
         const url = String((args && args.url) || "");
+        if (url.indexOf("/getran") >= 0) {
+          throw "leitura remota bloqueada: URL fora das localizações configuradas. Cadastre a raiz em Configurações antes de usar esta URL.";
+        }
         return /branches/i.test(url) ? fx.branchList : fx.rootList;
       }
       case "cat_file":

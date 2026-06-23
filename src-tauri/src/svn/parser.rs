@@ -145,10 +145,7 @@ pub fn parse_status(
             let rel = if rel.is_empty() { ".".to_string() } else { rel };
 
             let repos_item = e.repos_status.as_ref().map(|r| r.item.clone());
-            let remote_modified = repos_item
-                .as_deref()
-                .map(|i| i != "none")
-                .unwrap_or(false);
+            let remote_modified = repos_item.as_deref().map(|i| i != "none").unwrap_or(false);
             if remote_modified {
                 incoming_count += 1;
             }
@@ -390,5 +387,135 @@ pub fn hint_from_stderr(stderr: &str) -> Option<String> {
         Some("Caminho inválido — verifique se o destino existe.".into())
     } else {
         None
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::Path;
+
+    #[test]
+    fn parses_info_xml() {
+        let xml = r#"
+            <info>
+              <entry kind="dir" path="/wc/sna" revision="4821">
+                <url>svn+ssh://host/usr/svn/veiculo/trunk/PROJETOS/sna</url>
+                <relative-url>^/trunk/PROJETOS/sna</relative-url>
+                <repository>
+                  <root>svn+ssh://host/usr/svn/veiculo</root>
+                  <uuid>uuid-1</uuid>
+                </repository>
+                <commit revision="4820">
+                  <author>daniel</author>
+                  <date>2026-06-22T18:30:00.000Z</date>
+                </commit>
+              </entry>
+            </info>
+        "#;
+
+        let parsed = parse_info(xml).unwrap();
+        let entry = &parsed.entries[0];
+        assert_eq!(entry.kind, "dir");
+        assert_eq!(entry.revision, "4821");
+        assert_eq!(
+            entry.repository.as_ref().unwrap().uuid.as_deref(),
+            Some("uuid-1")
+        );
+        assert_eq!(
+            entry.commit.as_ref().unwrap().author.as_deref(),
+            Some("daniel")
+        );
+    }
+
+    #[test]
+    fn parses_status_xml() {
+        let xml = r#"
+            <status>
+              <target path="/wc">
+                <entry path="/wc/src/main.rs">
+                  <wc-status item="modified" props="none" revision="7" copied="false" wc-locked="false" tree-conflicted="false" />
+                  <repos-status item="modified" />
+                </entry>
+                <against revision="9" />
+              </target>
+            </status>
+        "#;
+
+        let parsed = parse_status(xml, Path::new("/wc"), |_| false).unwrap();
+        assert_eq!(parsed.entries.len(), 1);
+        assert_eq!(parsed.entries[0].rel_path, "src/main.rs");
+        assert_eq!(parsed.entries[0].item, "modified");
+        assert!(parsed.entries[0].remote_modified);
+        assert_eq!(parsed.incoming_count, 1);
+        assert_eq!(parsed.against_revision.as_deref(), Some("9"));
+    }
+
+    #[test]
+    fn parses_log_xml() {
+        let xml = r#"
+            <log>
+              <logentry revision="42">
+                <author>maria</author>
+                <date>2026-06-23T09:15:00.000Z</date>
+                <msg>Corrige fluxo</msg>
+                <paths>
+                  <path action="M" kind="file" copyfrom-path="/old" copyfrom-rev="41">/trunk/file.rs</path>
+                </paths>
+              </logentry>
+            </log>
+        "#;
+
+        let parsed = parse_log(xml).unwrap();
+        assert_eq!(parsed[0].revision, "42");
+        assert_eq!(parsed[0].message, "Corrige fluxo");
+        assert_eq!(parsed[0].paths[0].path, "/trunk/file.rs");
+        assert_eq!(parsed[0].paths[0].copyfrom_rev.as_deref(), Some("41"));
+    }
+
+    #[test]
+    fn parses_list_xml_and_sorts_dirs_first() {
+        let xml = r#"
+            <lists>
+              <list path="svn+ssh://host/repo">
+                <entry kind="file">
+                  <name>README.md</name>
+                  <size>12</size>
+                  <commit revision="7"><author>ana</author><date>2026-06-20T14:00:00.000Z</date></commit>
+                </entry>
+                <entry kind="dir">
+                  <name>src</name>
+                  <commit revision="8"><author>joao</author><date>2026-06-21T14:00:00.000Z</date></commit>
+                </entry>
+              </list>
+            </lists>
+        "#;
+
+        let parsed = parse_list(xml).unwrap();
+        assert_eq!(parsed[0].name, "src");
+        assert_eq!(parsed[0].kind, "dir");
+        assert_eq!(parsed[1].name, "README.md");
+        assert_eq!(parsed[1].size, Some(12));
+    }
+
+    #[test]
+    fn parses_blame_xml_with_content() {
+        let xml = r#"
+            <blame>
+              <target path="file.rs">
+                <entry line-number="1">
+                  <commit revision="5"><author>ana</author><date>2026-06-20T14:00:00.000Z</date></commit>
+                </entry>
+                <entry line-number="2" />
+              </target>
+            </blame>
+        "#;
+
+        let parsed = parse_blame(xml, "primeira\nsegunda\n").unwrap();
+        assert_eq!(parsed.len(), 2);
+        assert_eq!(parsed[0].line_number, 1);
+        assert_eq!(parsed[0].revision.as_deref(), Some("5"));
+        assert_eq!(parsed[0].content, "primeira");
+        assert_eq!(parsed[1].content, "segunda");
     }
 }

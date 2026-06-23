@@ -126,6 +126,17 @@ npm run tauri dev
 > Em alguns ambientes X11 pode ser necessário desativar a aceleração do WebKit:
 > `WEBKIT_DISABLE_DMABUF_RENDERER=1 WEBKIT_DISABLE_COMPOSITING_MODE=1 npm run tauri dev`
 
+## Qualidade
+
+```bash
+npm run check          # frontend + fmt/clippy/testes Rust
+npm run e2e            # Playwright com IPC Tauri mockado
+npm audit --audit-level=moderate
+```
+
+O CI em GitHub Actions executa Node 20 + Rust stable com build do frontend,
+testes E2E, `cargo fmt --check`, `cargo clippy -D warnings` e `cargo test`.
+
 ## Compilando para produção
 
 ```bash
@@ -179,6 +190,13 @@ ou `ssh` puro quando você usa chave; e mantém um **ControlMaster** persistente
 
 - Toda operação que **escreve no servidor** (commit, merge, switch, copy, delete)
   pede confirmação (pode ser desligado nas preferências).
+- O backend só aceita operações remotas sob as localizações cadastradas
+  (`repoRoots`) ou URLs dos projetos configurados. URLs customizadas devem ser
+  cadastradas primeiro em **Configurações**.
+- Checkouts e exports precisam gravar em caminhos absolutos dentro da pasta de
+  trabalho configurada; imports exigem uma pasta local absoluta existente.
+- Saídas grandes do `svn` são limitadas para proteger a UI: 20 MiB para
+  diff/log/status/list/info, 5 MiB para prévia de arquivo e 10 MiB para blame.
 - Commitar **direto no trunk** dispara um aviso destacado.
 - Excluir branch no servidor exige **digitar o nome** para confirmar.
 

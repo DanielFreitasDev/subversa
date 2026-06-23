@@ -35,7 +35,9 @@ fn ssh_options() -> String {
 /// Monta o valor de `SVN_SSH` conforme o modo de autenticação.
 pub fn svn_ssh_value(mode: SshMode) -> String {
     let opts = ssh_options();
-    let has_pass = std::env::var("SSHPASS").map(|v| !v.is_empty()).unwrap_or(false);
+    let has_pass = std::env::var("SSHPASS")
+        .map(|v| !v.is_empty())
+        .unwrap_or(false);
 
     match mode {
         SshMode::Key => format!("ssh {opts}"),

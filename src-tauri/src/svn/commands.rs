@@ -7,9 +7,12 @@
 use std::path::{Path, PathBuf};
 
 use tauri::State;
+use url::Url;
 
 use super::parser;
-use super::runner::{run, run_checked};
+use super::runner::{
+    run, run_checked, run_checked_limited, run_limited, LIMIT_BLAME, LIMIT_CAT_FILE, LIMIT_DEFAULT,
+};
 use super::types::*;
 use crate::config;
 use crate::AppState;
@@ -32,6 +35,14 @@ fn snapshot(state: &State<AppState>) -> (SshMode, Vec<Project>) {
     match state.config.lock() {
         Ok(c) => (c.ssh_mode, c.projects.clone()),
         Err(_) => (SshMode::Auto, Vec::new()),
+    }
+}
+
+/// Snapshot completo para validações, sem segurar o lock durante `await`.
+fn config_snapshot(state: &State<AppState>) -> (SshMode, AppConfig) {
+    match state.config.lock() {
+        Ok(c) => (c.ssh_mode, c.clone()),
+        Err(_) => (SshMode::Auto, AppConfig::default()),
     }
 }
 
@@ -65,6 +76,180 @@ fn match_project(folder: &str, url: &str, projects: &[Project]) -> Option<Projec
     }
     let durl = dec(url);
     projects.iter().find(|p| dec(&p.url) == durl).cloned()
+}
+
+const ALLOWED_REMOTE_SCHEMES: [&str; 5] = ["svn+ssh", "svn", "http", "https", "file"];
+
+fn parse_svn_url(raw: &str, label: &str) -> Result<Url, String> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Err(format!("{label} não pode ser vazia."));
+    }
+    let parseable = trimmed.replace(' ', "%20");
+    let url = Url::parse(&parseable)
+        .map_err(|e| format!("{label} inválida: {e}. Use uma URL SVN completa."))?;
+    if !ALLOWED_REMOTE_SCHEMES.contains(&url.scheme()) {
+        return Err(
+            "esquema de URL SVN inválido. Use svn+ssh://, svn://, http://, https:// ou file://."
+                .into(),
+        );
+    }
+    if url.query().is_some() || url.fragment().is_some() {
+        return Err("URL SVN inválida: remova query string ou fragmento.".into());
+    }
+    Ok(url)
+}
+
+fn normalized_remote_url(raw: &str, label: &str) -> Result<String, String> {
+    let url = parse_svn_url(raw, label)?;
+    Ok(url.as_str().trim_end_matches('/').to_string())
+}
+
+fn is_under_remote_location(candidate: &str, location: &str) -> bool {
+    candidate == location
+        || candidate
+            .strip_prefix(location)
+            .map(|rest| rest.starts_with('/') || rest.starts_with('@'))
+            .unwrap_or(false)
+}
+
+fn configured_remote_locations(cfg: &AppConfig) -> Vec<&str> {
+    cfg.repo_roots
+        .iter()
+        .map(String::as_str)
+        .chain(cfg.projects.iter().map(|p| p.url.as_str()))
+        .filter(|s| !s.trim().is_empty())
+        .collect()
+}
+
+fn validate_remote_url_for_scope(raw: &str, cfg: &AppConfig, action: &str) -> Result<(), String> {
+    let candidate = normalized_remote_url(raw, "URL SVN")?;
+    let mut saw_valid_location = false;
+
+    for location in configured_remote_locations(cfg) {
+        if let Ok(root) = normalized_remote_url(location, "localização configurada") {
+            saw_valid_location = true;
+            if is_under_remote_location(&candidate, &root) {
+                return Ok(());
+            }
+        }
+    }
+
+    if !saw_valid_location {
+        return Err(
+            "nenhuma localização de repositório válida está configurada. Cadastre repoRoots ou projetos em Configurações."
+                .into(),
+        );
+    }
+
+    Err(format!(
+        "{action} bloqueada: URL fora das localizações configuradas. Cadastre a raiz em Configurações antes de usar esta URL."
+    ))
+}
+
+fn validate_remote_url_for_read(raw: &str, cfg: &AppConfig) -> Result<(), String> {
+    validate_remote_url_for_scope(raw, cfg, "leitura remota")
+}
+
+fn validate_remote_url_for_write(raw: &str, cfg: &AppConfig) -> Result<(), String> {
+    validate_remote_url_for_scope(raw, cfg, "operação remota")
+}
+
+fn looks_like_remote_url(value: &str) -> bool {
+    value.contains("://")
+}
+
+fn normalize_local_path(path: &Path) -> PathBuf {
+    let mut out = PathBuf::new();
+    for component in path.components() {
+        match component {
+            std::path::Component::CurDir => {}
+            std::path::Component::ParentDir => {
+                out.pop();
+            }
+            other => out.push(other.as_os_str()),
+        }
+    }
+    out
+}
+
+fn comparable_local_path(path: &Path) -> PathBuf {
+    if let Ok(canon) = path.canonicalize() {
+        return canon;
+    }
+    for ancestor in path.ancestors().skip(1) {
+        if let Ok(canon) = ancestor.canonicalize() {
+            if let Ok(rest) = path.strip_prefix(ancestor) {
+                return normalize_local_path(&canon.join(rest));
+            }
+        }
+    }
+    normalize_local_path(path)
+}
+
+fn validate_local_path(
+    raw: &str,
+    cfg: &AppConfig,
+    label: &str,
+    must_stay_in_base_dir: bool,
+    must_be_existing_dir: bool,
+) -> Result<PathBuf, String> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Err(format!("{label} não pode ser vazio."));
+    }
+    if trimmed.contains('\0') {
+        return Err(format!("{label} contém caractere inválido."));
+    }
+    let path = normalize_local_path(Path::new(trimmed));
+    if !path.is_absolute() {
+        return Err(format!("{label} precisa ser um caminho absoluto."));
+    }
+
+    if must_be_existing_dir {
+        let meta = std::fs::metadata(&path)
+            .map_err(|e| format!("{label} não existe ou não está acessível: {e}"))?;
+        if !meta.is_dir() {
+            return Err(format!("{label} precisa ser uma pasta."));
+        }
+    }
+
+    if must_stay_in_base_dir {
+        let base = validate_local_path(
+            &cfg.base_dir,
+            cfg,
+            "pasta de trabalho configurada",
+            false,
+            false,
+        )?;
+        let target_cmp = comparable_local_path(&path);
+        let base_cmp = comparable_local_path(&base);
+        if !target_cmp.starts_with(&base_cmp) {
+            return Err(format!(
+                "destino fora da pasta de trabalho configurada. Escolha um caminho dentro de {}.",
+                base.display()
+            ));
+        }
+    }
+
+    Ok(path)
+}
+
+fn validate_non_empty_message(message: &str) -> Result<(), String> {
+    if message.trim().is_empty() {
+        Err("a mensagem do commit não pode ser vazia".into())
+    } else {
+        Ok(())
+    }
+}
+
+fn validate_resolve_accept(accept: &str) -> Result<(), String> {
+    match accept {
+        "working" | "mine-full" | "theirs-full" | "base" | "mine-conflict" | "theirs-conflict" => {
+            Ok(())
+        }
+        _ => Err("opção de resolução inválida.".into()),
+    }
 }
 
 /// Constrói uma [`WorkingCopy`] a partir de `svn info` + `svn status` (locais).
@@ -115,7 +300,12 @@ async fn build_working_copy(
         for e in &st.entries {
             let actionable = matches!(
                 e.item.as_str(),
-                "modified" | "added" | "deleted" | "replaced" | "missing" | "obstructed"
+                "modified"
+                    | "added"
+                    | "deleted"
+                    | "replaced"
+                    | "missing"
+                    | "obstructed"
                     | "conflicted"
             ) || e.props == "modified"
                 || e.props == "conflicted";
@@ -257,16 +447,24 @@ pub async fn diff_revision(
     if revision.trim().is_empty() {
         return Err("Revisão inválida.".into());
     }
-    let mode = mode_of(&state);
+    let (mode, cfg) = config_snapshot(&state);
+    if looks_like_remote_url(&target) {
+        validate_remote_url_for_read(&target, &cfg)?;
+    }
     let change = format!("-c{}", revision.trim());
-    let mut args: Vec<&str> = vec!["diff", "--internal-diff", "--non-interactive", change.as_str()];
+    let mut args: Vec<&str> = vec![
+        "diff",
+        "--internal-diff",
+        "--non-interactive",
+        change.as_str(),
+    ];
     if ignore_ws {
         args.push("-x");
         args.push("-w");
     }
     args.push("--");
     args.push(target.as_str());
-    run_checked(&args, None, mode).await
+    run_checked_limited(&args, None, mode, LIMIT_DEFAULT).await
 }
 
 /// Histórico (`svn log -v`). `target` pode ser um caminho de WC ou uma URL.
@@ -281,7 +479,10 @@ pub async fn get_log(
     rev_range: Option<String>,
     state: State<'_, AppState>,
 ) -> Result<Vec<LogEntry>, String> {
-    let mode = mode_of(&state);
+    let (mode, cfg) = config_snapshot(&state);
+    if looks_like_remote_url(&target) {
+        validate_remote_url_for_read(&target, &cfg)?;
+    }
     let limit_s = limit.to_string();
     let mut args: Vec<String> = vec![
         "log".into(),
@@ -302,15 +503,22 @@ pub async fn get_log(
     args.push("--".into());
     args.push(target);
     let refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-    let xml = run_checked(&refs, None, mode).await?;
+    let xml = run_checked_limited(&refs, None, mode, LIMIT_DEFAULT).await?;
     parser::parse_log(&xml)
 }
 
 /// Lista o conteúdo de uma URL no repositório (navegador de branches).
 #[tauri::command]
 pub async fn list_dir(url: String, state: State<'_, AppState>) -> Result<Vec<ListEntry>, String> {
-    let mode = mode_of(&state);
-    let xml = run_checked(&["list", "--xml", "--non-interactive", "--", &url], None, mode).await?;
+    let (mode, cfg) = config_snapshot(&state);
+    validate_remote_url_for_read(&url, &cfg)?;
+    let xml = run_checked_limited(
+        &["list", "--xml", "--non-interactive", "--", &url],
+        None,
+        mode,
+        LIMIT_DEFAULT,
+    )
+    .await?;
     parser::parse_list(&xml)
 }
 
@@ -321,7 +529,8 @@ pub async fn cat_file(
     revision: Option<String>,
     state: State<'_, AppState>,
 ) -> Result<String, String> {
-    let mode = mode_of(&state);
+    let (mode, cfg) = config_snapshot(&state);
+    validate_remote_url_for_read(&target, &cfg)?;
     let mut args: Vec<String> = vec!["cat".into(), "--non-interactive".into()];
     if let Some(r) = revision {
         args.push("-r".into());
@@ -330,17 +539,29 @@ pub async fn cat_file(
     args.push("--".into());
     args.push(target);
     let refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-    run_checked(&refs, None, mode).await
+    run_checked_limited(&refs, None, mode, LIMIT_CAT_FILE).await
 }
 
 /// Autoria por linha (`svn blame`) combinada com o conteúdo (`svn cat`).
 #[tauri::command]
 pub async fn blame(target: String, state: State<'_, AppState>) -> Result<Vec<BlameLine>, String> {
-    let mode = mode_of(&state);
-    let xml = run_checked(&["blame", "--xml", "--non-interactive", "--", &target], None, mode).await?;
-    let content = run_checked(&["cat", "--non-interactive", "--", &target], None, mode)
-        .await
-        .unwrap_or_default();
+    let (mode, cfg) = config_snapshot(&state);
+    validate_remote_url_for_read(&target, &cfg)?;
+    let xml = run_checked_limited(
+        &["blame", "--xml", "--non-interactive", "--", &target],
+        None,
+        mode,
+        LIMIT_BLAME,
+    )
+    .await?;
+    let content = run_checked_limited(
+        &["cat", "--non-interactive", "--", &target],
+        None,
+        mode,
+        LIMIT_BLAME,
+    )
+    .await
+    .unwrap_or_default();
     parser::parse_blame(&xml, &content)
 }
 
@@ -349,7 +570,14 @@ pub async fn blame(target: String, state: State<'_, AppState>) -> Result<Vec<Bla
 #[tauri::command]
 pub async fn get_url_info(url: String, state: State<'_, AppState>) -> Result<UrlInfo, String> {
     let mode = mode_of(&state);
-    let xml = run_checked(&["info", "--xml", "--non-interactive", "--", &url], None, mode).await?;
+    parse_svn_url(&url, "URL SVN")?;
+    let xml = run_checked_limited(
+        &["info", "--xml", "--non-interactive", "--", &url],
+        None,
+        mode,
+        LIMIT_DEFAULT,
+    )
+    .await?;
     let info = parser::parse_info(&xml)?;
     let entry = info
         .entries
@@ -382,7 +610,9 @@ pub async fn diff_urls(
     ignore_ws: bool,
     state: State<'_, AppState>,
 ) -> Result<String, String> {
-    let mode = mode_of(&state);
+    let (mode, cfg) = config_snapshot(&state);
+    validate_remote_url_for_read(&old_url, &cfg)?;
+    validate_remote_url_for_read(&new_url, &cfg)?;
     let mut args: Vec<&str> = vec!["diff", "--internal-diff", "--non-interactive"];
     if ignore_ws {
         args.push("-x");
@@ -392,7 +622,7 @@ pub async fn diff_urls(
     args.push(old_url.as_str());
     args.push("--new");
     args.push(new_url.as_str());
-    run_checked(&args, None, mode).await
+    run_checked_limited(&args, None, mode, LIMIT_DEFAULT).await
 }
 
 // ---------------------------------------------------------------------------
@@ -405,15 +635,31 @@ pub async fn checkout(
     dest: String,
     state: State<'_, AppState>,
 ) -> Result<CommandOutput, String> {
-    let mode = mode_of(&state);
-    run(&["checkout", "--non-interactive", "--", &url, &dest], None, mode).await
+    let (mode, cfg) = config_snapshot(&state);
+    validate_remote_url_for_read(&url, &cfg)?;
+    let dest = validate_local_path(&dest, &cfg, "destino do checkout", true, false)?;
+    let dest = dest.to_string_lossy().to_string();
+    run_limited(
+        &["checkout", "--non-interactive", "--", &url, &dest],
+        None,
+        mode,
+        LIMIT_DEFAULT,
+    )
+    .await
 }
 
 #[tauri::command]
 pub async fn update(path: String, state: State<'_, AppState>) -> Result<CommandOutput, String> {
     let mode = mode_of(&state);
     run(
-        &["update", "--non-interactive", "--accept", "postpone", "--", &path],
+        &[
+            "update",
+            "--non-interactive",
+            "--accept",
+            "postpone",
+            "--",
+            &path,
+        ],
         None,
         mode,
     )
@@ -429,9 +675,7 @@ pub async fn commit(
     if paths.is_empty() {
         return Err("nenhum arquivo selecionado para commit".into());
     }
-    if message.trim().is_empty() {
-        return Err("a mensagem do commit não pode ser vazia".into());
-    }
+    validate_non_empty_message(&message)?;
     let mode = mode_of(&state);
     let mut args: Vec<String> = vec![
         "commit".into(),
@@ -508,8 +752,11 @@ pub async fn create_branch(
     message: String,
     state: State<'_, AppState>,
 ) -> Result<CommandOutput, String> {
-    let mode = mode_of(&state);
-    run(
+    let (mode, cfg) = config_snapshot(&state);
+    validate_non_empty_message(&message)?;
+    validate_remote_url_for_read(&source_url, &cfg)?;
+    validate_remote_url_for_write(&branch_url, &cfg)?;
+    run_limited(
         &[
             "copy",
             "--parents",
@@ -522,6 +769,7 @@ pub async fn create_branch(
         ],
         None,
         mode,
+        LIMIT_DEFAULT,
     )
     .await
 }
@@ -532,8 +780,10 @@ pub async fn switch_wc(
     url: String,
     state: State<'_, AppState>,
 ) -> Result<CommandOutput, String> {
-    let mode = mode_of(&state);
-    run(
+    let (mode, cfg) = config_snapshot(&state);
+    validate_remote_url_for_read(&url, &cfg)?;
+    validate_local_path(&path, &cfg, "working copy", true, false)?;
+    run_limited(
         &[
             "switch",
             "--non-interactive",
@@ -545,6 +795,7 @@ pub async fn switch_wc(
         ],
         None,
         mode,
+        LIMIT_DEFAULT,
     )
     .await
 }
@@ -557,7 +808,9 @@ pub async fn merge(
     record_only: bool,
     state: State<'_, AppState>,
 ) -> Result<CommandOutput, String> {
-    let mode = mode_of(&state);
+    let (mode, cfg) = config_snapshot(&state);
+    validate_remote_url_for_read(&source_url, &cfg)?;
+    validate_local_path(&path, &cfg, "working copy", true, false)?;
     let mut args: Vec<String> = vec![
         "merge".into(),
         "--non-interactive".into(),
@@ -574,7 +827,7 @@ pub async fn merge(
     args.push(source_url);
     args.push(path);
     let refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-    run(&refs, None, mode).await
+    run_limited(&refs, None, mode, LIMIT_DEFAULT).await
 }
 
 #[tauri::command]
@@ -584,6 +837,7 @@ pub async fn resolve(
     state: State<'_, AppState>,
 ) -> Result<CommandOutput, String> {
     let mode = mode_of(&state);
+    validate_resolve_accept(&accept)?;
     run(&["resolve", "--accept", &accept, "--", &path], None, mode).await
 }
 
@@ -599,11 +853,14 @@ pub async fn delete_remote(
     message: String,
     state: State<'_, AppState>,
 ) -> Result<CommandOutput, String> {
-    let mode = mode_of(&state);
-    run(
+    let (mode, cfg) = config_snapshot(&state);
+    validate_non_empty_message(&message)?;
+    validate_remote_url_for_write(&url, &cfg)?;
+    run_limited(
         &["delete", "--non-interactive", "-m", &message, "--", &url],
         None,
         mode,
+        LIMIT_DEFAULT,
     )
     .await
 }
@@ -619,7 +876,10 @@ pub async fn export_path(
     revision: Option<String>,
     state: State<'_, AppState>,
 ) -> Result<CommandOutput, String> {
-    let mode = mode_of(&state);
+    let (mode, cfg) = config_snapshot(&state);
+    validate_remote_url_for_read(&url, &cfg)?;
+    let dest = validate_local_path(&dest, &cfg, "destino da exportação", true, false)?;
+    let dest = dest.to_string_lossy().to_string();
     let mut args: Vec<String> = vec!["export".into(), "--non-interactive".into()];
     if force {
         args.push("--force".into());
@@ -632,7 +892,7 @@ pub async fn export_path(
     args.push(url);
     args.push(dest);
     let refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-    run(&refs, None, mode).await
+    run_limited(&refs, None, mode, LIMIT_DEFAULT).await
 }
 
 /// Importa uma pasta local para uma URL do repositório (`svn import`).
@@ -643,11 +903,12 @@ pub async fn import_path(
     message: String,
     state: State<'_, AppState>,
 ) -> Result<CommandOutput, String> {
-    if message.trim().is_empty() {
-        return Err("a mensagem do commit não pode ser vazia".into());
-    }
-    let mode = mode_of(&state);
-    run(
+    let (mode, cfg) = config_snapshot(&state);
+    validate_non_empty_message(&message)?;
+    let local_path = validate_local_path(&local_path, &cfg, "pasta local a importar", false, true)?;
+    validate_remote_url_for_write(&url, &cfg)?;
+    let local_path = local_path.to_string_lossy().to_string();
+    run_limited(
         &[
             "import",
             "--non-interactive",
@@ -659,6 +920,7 @@ pub async fn import_path(
         ],
         None,
         mode,
+        LIMIT_DEFAULT,
     )
     .await
 }
@@ -670,11 +932,10 @@ pub async fn make_dir(
     message: String,
     state: State<'_, AppState>,
 ) -> Result<CommandOutput, String> {
-    if message.trim().is_empty() {
-        return Err("a mensagem do commit não pode ser vazia".into());
-    }
-    let mode = mode_of(&state);
-    run(
+    let (mode, cfg) = config_snapshot(&state);
+    validate_non_empty_message(&message)?;
+    validate_remote_url_for_write(&url, &cfg)?;
+    run_limited(
         &[
             "mkdir",
             "--parents",
@@ -686,6 +947,7 @@ pub async fn make_dir(
         ],
         None,
         mode,
+        LIMIT_DEFAULT,
     )
     .await
 }
@@ -699,11 +961,11 @@ pub async fn move_remote(
     message: String,
     state: State<'_, AppState>,
 ) -> Result<CommandOutput, String> {
-    if message.trim().is_empty() {
-        return Err("a mensagem do commit não pode ser vazia".into());
-    }
-    let mode = mode_of(&state);
-    run(
+    let (mode, cfg) = config_snapshot(&state);
+    validate_non_empty_message(&message)?;
+    validate_remote_url_for_write(&src_url, &cfg)?;
+    validate_remote_url_for_write(&dst_url, &cfg)?;
+    run_limited(
         &[
             "move",
             "--parents",
@@ -716,6 +978,7 @@ pub async fn move_remote(
         ],
         None,
         mode,
+        LIMIT_DEFAULT,
     )
     .await
 }
@@ -770,6 +1033,7 @@ pub async fn test_connection(
     state: State<'_, AppState>,
 ) -> Result<CommandOutput, String> {
     let mode = mode_of(&state);
+    parse_svn_url(&url, "URL SVN")?;
     run(&["info", "--non-interactive", "--", &url], None, mode).await
 }
 
@@ -857,4 +1121,101 @@ pub fn suggested_base_dir() -> String {
     dirs::home_dir()
         .map(|p| p.to_string_lossy().to_string())
         .unwrap_or_else(|| ".".to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn validation_config() -> AppConfig {
+        AppConfig {
+            base_dir: std::env::temp_dir()
+                .join(format!("subversa-validation-{}", std::process::id()))
+                .to_string_lossy()
+                .to_string(),
+            repo_roots: vec!["svn+ssh://host/usr/svn/veiculo".into()],
+            projects: vec![Project {
+                key: "sna".into(),
+                name: "SNA".into(),
+                description: "SNA trunk".into(),
+                url: "svn+ssh://host/usr/svn/getran/trunk/PROJETOS/sna".into(),
+            }],
+            ..AppConfig::default()
+        }
+    }
+
+    #[test]
+    fn remote_validation_accepts_urls_under_roots_and_projects() {
+        let cfg = validation_config();
+
+        validate_remote_url_for_read(
+            "svn+ssh://host/usr/svn/veiculo/branches/ISSUES 2026/06 - JUNHO/issue_1234",
+            &cfg,
+        )
+        .unwrap();
+
+        validate_remote_url_for_write(
+            "svn+ssh://host/usr/svn/getran/trunk/PROJETOS/sna/src/App.java",
+            &cfg,
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn remote_validation_rejects_out_of_scope_urls() {
+        let cfg = validation_config();
+
+        let err = validate_remote_url_for_read("svn+ssh://host/usr/svn/veiculo2/trunk", &cfg)
+            .unwrap_err();
+        assert!(err.contains("fora das localizações configuradas"));
+    }
+
+    #[test]
+    fn remote_validation_rejects_invalid_scheme_and_empty_message() {
+        let cfg = validation_config();
+
+        let err =
+            validate_remote_url_for_read("ssh://host/usr/svn/veiculo/trunk", &cfg).unwrap_err();
+        assert!(err.contains("esquema de URL SVN inválido"));
+
+        let err = validate_non_empty_message("  \n ").unwrap_err();
+        assert!(err.contains("mensagem do commit"));
+    }
+
+    #[test]
+    fn resolve_accept_rejects_unknown_value() {
+        validate_resolve_accept("mine-full").unwrap();
+        assert!(validate_resolve_accept("launch-editor").is_err());
+    }
+
+    #[test]
+    fn local_destination_must_stay_inside_base_dir() {
+        let cfg = validation_config();
+        let base = PathBuf::from(&cfg.base_dir);
+        std::fs::create_dir_all(&base).unwrap();
+
+        let inside = base.join("checkout/sna");
+        validate_local_path(
+            inside.to_str().unwrap(),
+            &cfg,
+            "destino do checkout",
+            true,
+            false,
+        )
+        .unwrap();
+
+        let outside = std::env::temp_dir().join(format!(
+            "subversa-validation-outside-{}",
+            std::process::id()
+        ));
+        let err = validate_local_path(
+            outside.to_str().unwrap(),
+            &cfg,
+            "destino do checkout",
+            true,
+            false,
+        )
+        .unwrap_err();
+        assert!(err.contains("destino fora da pasta de trabalho"));
+    }
 }

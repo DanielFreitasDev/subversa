@@ -2,6 +2,7 @@
 
 import type { CommandOutput } from "./types";
 import { toast } from "@/store/toast";
+import { friendlyErrorMessage } from "./errors";
 
 /** Mostra toast de sucesso/erro a partir de um [`CommandOutput`]. */
 export function reportOutput(
@@ -39,7 +40,7 @@ export async function tryRun<T>(
   try {
     return await fn();
   } catch (e) {
-    toast.error(errorTitle, String(e));
+    toast.error(errorTitle, friendlyErrorMessage(e));
     return null;
   }
 }
