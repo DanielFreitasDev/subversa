@@ -17,6 +17,7 @@ import { BranchesView } from "@/views/BranchesView";
 import { ChangesView } from "@/views/ChangesView";
 import { CommandLogView } from "@/views/CommandLogView";
 import { HistoryView } from "@/views/HistoryView";
+import { IncomingView } from "@/views/IncomingView";
 import { MergeView } from "@/views/MergeView";
 import { OverviewView } from "@/views/OverviewView";
 import { ReposView } from "@/views/ReposView";
@@ -29,6 +30,8 @@ function ViewRouter() {
     switch (view) {
       case "overview":
         return <OverviewView />;
+      case "incoming":
+        return <IncomingView />;
       case "changes":
         return <ChangesView />;
       case "history":

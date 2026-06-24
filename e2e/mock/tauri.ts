@@ -206,6 +206,8 @@ export function tauriInit(fx: MockData) {
         return fx.diff;
       case "get_log":
         return fx.log;
+      case "incoming":
+        return { baseRevision: "4789", headRevision: "4820", entries: fx.log };
       case "list_dir": {
         const url = String((args && args.url) || "");
         if (url.indexOf("/getran") >= 0) {
@@ -241,7 +243,7 @@ export function tauriInit(fx: MockData) {
       case "checkout": case "update": case "commit": case "svn_add": case "revert":
       case "remove": case "create_branch": case "switch_wc": case "merge": case "resolve":
       case "cleanup": case "delete_remote": case "export_path": case "import_path":
-      case "make_dir": case "move_remote":
+      case "make_dir": case "move_remote": case "reverse_merge": case "set_revprop_message":
         return ok("svn " + cmd);
       default:
         (window as unknown as { __UNMOCKED: string[] }).__UNMOCKED.push(cmd);

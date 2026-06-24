@@ -11,6 +11,7 @@ import type {
   BlameLine,
   CommandLogEntry,
   CommandOutput,
+  IncomingResult,
   ListEntry,
   LogEntry,
   Prerequisites,
@@ -48,6 +49,10 @@ export const getLog = (
     search: search ?? null,
     revRange: revRange ?? null,
   });
+
+/** O que chega do servidor ao atualizar a WC (aba Entrada). */
+export const incoming = (path: string, limit?: number) =>
+  invoke<IncomingResult>("incoming", { path, limit: limit ?? null });
 
 export const listDir = (url: string) => invoke<ListEntry[]>("list_dir", { url });
 
@@ -93,6 +98,14 @@ export const merge = (
   dryRun = false,
   recordOnly = false,
 ) => invoke<CommandOutput>("merge", { path, sourceUrl, dryRun, recordOnly });
+
+/** Reverte as mudanças de uma revisão na cópia local (merge reverso). */
+export const reverseMerge = (path: string, revision: string) =>
+  invoke<CommandOutput>("reverse_merge", { path, revision });
+
+/** Edita o comentário (mensagem) de uma revisão no servidor (svn:log revprop). */
+export const setRevpropMessage = (path: string, revision: string, message: string) =>
+  invoke<CommandOutput>("set_revprop_message", { path, revision, message });
 
 export const resolve = (path: string, accept: string) =>
   invoke<CommandOutput>("resolve", { path, accept });

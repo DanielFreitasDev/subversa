@@ -8,10 +8,12 @@ import type { WorkingCopy } from "@/lib/types";
 import { confirm } from "@/store/confirm";
 import { useConfigStore } from "@/store/config";
 import { toast } from "@/store/toast";
+import { useUiStore } from "@/store/ui";
 import { useWorkspaceStore } from "@/store/workspace";
 
 export function useActions() {
   const refreshOne = useWorkspaceStore((s) => s.refreshOne);
+  const setView = useUiStore((s) => s.setView);
   const confirmServerOps = useConfigStore((s) => s.config?.confirmServerOps ?? true);
 
   /** Atualiza a working copy (svn update). */
@@ -97,5 +99,26 @@ export function useActions() {
     [refreshOne, confirmServerOps],
   );
 
-  return { update, cleanup, revertAll, switchTo, closeFolder };
+  /** Reverte as mudanças de uma revisão na WC e leva o usuário para Alterações. */
+  const revertRevision = useCallback(
+    async (wc: WorkingCopy, revision: string) => {
+      const ok = await confirm({
+        title: `Reverter as mudanças da revisão r${revision}?`,
+        message:
+          "Isso desfaz as alterações desta revisão na sua cópia local (não no servidor). Você poderá revisar e commitar na aba Alterações.",
+        confirmLabel: `Reverter r${revision}`,
+      });
+      if (!ok) return false;
+      const out = await tryRun(() => api.reverseMerge(wc.path, revision), "Falha ao reverter");
+      if (out && reportOutput(out, "Reversão aplicada", "Revise e commite na aba Alterações")) {
+        await refreshOne(wc.path);
+        setView("changes");
+        return true;
+      }
+      return false;
+    },
+    [refreshOne, setView],
+  );
+
+  return { update, cleanup, revertAll, switchTo, closeFolder, revertRevision };
 }

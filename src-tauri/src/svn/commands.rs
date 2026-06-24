@@ -510,6 +510,85 @@ pub async fn get_log(
     parser::parse_log(&xml)
 }
 
+/// Lê a revisão de `svn info` (BASE por padrão, ou na revisão `rev`).
+async fn info_revision(path: &str, rev: Option<&str>, mode: SshMode) -> Result<String, String> {
+    let mut args: Vec<&str> = vec!["info", "--xml", "--non-interactive"];
+    if let Some(r) = rev {
+        args.push("-r");
+        args.push(r);
+    }
+    args.push("--");
+    args.push(path);
+    let xml = run_checked(&args, None, mode).await?;
+    parser::parse_info(&xml)?
+        .entries
+        .into_iter()
+        .next()
+        .map(|e| e.revision)
+        .ok_or_else(|| "svn info não retornou dados".to_string())
+}
+
+/// Lê a URL atual de uma working copy (`svn info`).
+async fn info_url(path: &str, mode: SshMode) -> Result<String, String> {
+    let xml = run_checked(
+        &["info", "--xml", "--non-interactive", "--", path],
+        None,
+        mode,
+    )
+    .await?;
+    parser::parse_info(&xml)?
+        .entries
+        .into_iter()
+        .next()
+        .and_then(|e| e.url)
+        .ok_or_else(|| "não consegui obter a URL da working copy.".to_string())
+}
+
+/// "Entrada": o que chega do servidor ao atualizar a WC — as revisões entre a
+/// BASE e o HEAD que afetam este caminho (autor, mensagem e arquivos), na mesma
+/// forma do histórico para que a UI as detalhe e diferencie igual ao Histórico.
+#[tauri::command]
+pub async fn incoming(
+    path: String,
+    limit: Option<u32>,
+    state: State<'_, AppState>,
+) -> Result<IncomingResult, String> {
+    let mode = mode_of(&state);
+    let base = info_revision(&path, None, mode).await?;
+    // HEAD do servidor (melhor esforço: o nó pode ter sido removido no HEAD).
+    let head = info_revision(&path, Some("HEAD"), mode).await.ok();
+
+    let limit_s = limit.unwrap_or(200).to_string();
+    let range = format!("HEAD:{base}");
+    let xml = run_checked_limited(
+        &[
+            "log",
+            "--xml",
+            "-v",
+            "-l",
+            &limit_s,
+            "-r",
+            &range,
+            "--non-interactive",
+            "--",
+            &path,
+        ],
+        None,
+        mode,
+        LIMIT_DEFAULT,
+    )
+    .await?;
+    let mut entries = parser::parse_log(&xml)?;
+    // A BASE já está na WC — só interessa o que vem depois dela.
+    entries.retain(|e| e.revision != base);
+
+    Ok(IncomingResult {
+        base_revision: base,
+        head_revision: head,
+        entries,
+    })
+}
+
 /// Lista o conteúdo de uma URL no repositório (navegador de branches).
 #[tauri::command]
 pub async fn list_dir(url: String, state: State<'_, AppState>) -> Result<Vec<ListEntry>, String> {
@@ -939,6 +1018,99 @@ pub async fn merge(
     args.push(path);
     let refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
     run_streaming_op(&app, "merge", &refs, None, mode).await
+}
+
+/// Reverte as mudanças de uma revisão na cópia local (merge reverso). Não
+/// escreve no servidor: aplica o inverso de `revision` na WC para o usuário
+/// revisar e commitar depois (a publicação é o commit, como na Integração).
+#[tauri::command]
+pub async fn reverse_merge(
+    path: String,
+    revision: String,
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<CommandOutput, String> {
+    let n: i64 = revision
+        .trim()
+        .parse()
+        .map_err(|_| "revisão inválida.".to_string())?;
+    let (mode, cfg) = config_snapshot(&state);
+    validate_local_path(&path, &cfg, "working copy", true, false)?;
+    // A fonte do merge reverso é a própria URL da WC (a linha onde a revisão vive).
+    let url = info_url(&path, mode).await?;
+    validate_remote_url_for_read(&url, &cfg)?;
+    // -r N:N-1 desfaz exatamente a revisão N — dois números positivos, sem a
+    // ambiguidade de parsing de `-c -N`.
+    let range = format!("{}:{}", n, n - 1);
+    run_streaming_op(
+        &app,
+        "merge",
+        &[
+            "merge",
+            "--non-interactive",
+            "--accept",
+            "postpone",
+            "-r",
+            &range,
+            "--",
+            &url,
+            &path,
+        ],
+        None,
+        mode,
+    )
+    .await
+}
+
+/// Edita o comentário (mensagem) de uma revisão no servidor
+/// (`svn propset svn:log --revprop`). É uma alteração imediata e para todos — não
+/// vira commit. Requer que o servidor permita revprop changes (hook
+/// pre-revprop-change); sem ele, retorna erro (com dica amigável).
+#[tauri::command]
+pub async fn set_revprop_message(
+    path: String,
+    revision: String,
+    message: String,
+    state: State<'_, AppState>,
+) -> Result<CommandOutput, String> {
+    let n: i64 = revision
+        .trim()
+        .parse()
+        .map_err(|_| "revisão inválida.".to_string())?;
+    let (mode, cfg) = config_snapshot(&state);
+    validate_local_path(&path, &cfg, "working copy", true, false)?;
+
+    // Grava a mensagem num arquivo temporário e usa `-F`: robusto a mensagens
+    // multilinha ou que comecem com '-' (o runner não expõe stdin).
+    let tmp = std::env::temp_dir().join(format!(
+        "subversa-revprop-{}-{}.txt",
+        std::process::id(),
+        next_op_id()
+    ));
+    std::fs::write(&tmp, message.as_bytes())
+        .map_err(|e| format!("não consegui preparar a mensagem: {e}"))?;
+    let tmp_s = tmp.to_string_lossy().to_string();
+    let rev_s = n.to_string();
+
+    let out = run(
+        &[
+            "propset",
+            "svn:log",
+            "--revprop",
+            "-r",
+            &rev_s,
+            "--non-interactive",
+            "-F",
+            &tmp_s,
+            "--",
+            &path,
+        ],
+        None,
+        mode,
+    )
+    .await;
+    let _ = std::fs::remove_file(&tmp);
+    out
 }
 
 #[tauri::command]

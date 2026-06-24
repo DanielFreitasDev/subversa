@@ -187,6 +187,18 @@ pub struct LogEntry {
     pub paths: Vec<LogPath>,
 }
 
+/// Resultado da aba "Entrada": o que chega do servidor ao atualizar a WC.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct IncomingResult {
+    /// Revisão atual da working copy (BASE).
+    pub base_revision: String,
+    /// Revisão HEAD do servidor (None se não foi possível consultar).
+    pub head_revision: Option<String>,
+    /// Revisões a receber (mais recente → mais antiga); exclui a BASE.
+    pub entries: Vec<LogEntry>,
+}
+
 /// Entrada de listagem de repositório (`svn list`).
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]

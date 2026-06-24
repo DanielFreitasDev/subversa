@@ -126,6 +126,16 @@ export interface LogEntry {
   paths: LogPath[];
 }
 
+/** Resultado da aba "Entrada": o que chega do servidor ao atualizar a WC. */
+export interface IncomingResult {
+  /** Revisão atual da working copy (BASE). */
+  baseRevision: string;
+  /** Revisão HEAD do servidor (null se não foi possível consultar). */
+  headRevision: string | null;
+  /** Revisões a receber (mais recente → mais antiga); exclui a BASE. */
+  entries: LogEntry[];
+}
+
 export interface ListEntry {
   name: string;
   kind: "file" | "dir" | string;

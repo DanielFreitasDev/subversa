@@ -78,6 +78,17 @@ export const HELP = {
     note: "É só leitura: comparar não altera nada no servidor nem no seu computador.",
   },
 
+  editRevision: {
+    title: "Editar comentário da revisão",
+    intro:
+      "Permite corrigir a mensagem de um commit já enviado (por exemplo, um erro de digitação ou um número de chamado errado).",
+    points: [
+      "A mudança vale no servidor para todos, na hora — não é um novo commit e não dá para desfazer facilmente.",
+      "Só o texto do comentário muda; os arquivos e o histórico da revisão continuam iguais.",
+    ],
+    note: "Se o servidor recusar, é porque ele não está configurado para aceitar edição de comentários (falta o hook pre-revprop-change). Fale com o administrador do SVN.",
+  },
+
   // ---- Telas (views) ------------------------------------------------------
   overview: {
     title: "Visão geral",
@@ -105,6 +116,18 @@ export const HELP = {
     note: "Letras: M = modificado, A = novo, D = apagado, C = conflito. Conflitos precisam ser resolvidos antes de commitar.",
   },
 
+  incoming: {
+    title: "Entrada (a receber)",
+    intro:
+      "Mostra o que mudou no servidor desde a última vez que você atualizou — ou seja, o que vai chegar na sua cópia local quando você clicar em Atualizar.",
+    points: [
+      "Cada item é uma revisão a receber: quem mudou, quando, a mensagem e os arquivos — clique para ver o diff de cada uma.",
+      "O cabeçalho mostra em que revisão você está e em qual o servidor está.",
+      "“Atualizar agora” baixa tudo isso de uma vez para a sua cópia local.",
+    ],
+    note: "É só uma prévia: nada muda na sua cópia até você atualizar. Se aparecer “Tudo em dia”, você já tem a versão mais recente.",
+  },
+
   history: {
     title: "Histórico",
     intro:
@@ -112,9 +135,10 @@ export const HELP = {
     points: [
       "Clique em uma revisão para ver o que mudou nela.",
       "Use a busca para filtrar por autor ou por um termo na mensagem.",
+      "Clique com o botão direito numa revisão (ou use os ícones no detalhe) para reverter as mudanças dela, editar o comentário ou copiar o número.",
       "“Carregar mais” mostra revisões mais antigas.",
     ],
-    note: "É só leitura: olhar o histórico não muda nada.",
+    note: "Olhar o histórico não muda nada; reverter aplica as mudanças na sua cópia para você revisar e commitar, e editar o comentário altera a mensagem no servidor.",
   },
 
   branches: {

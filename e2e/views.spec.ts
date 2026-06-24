@@ -49,6 +49,21 @@ test.describe("tema escuro", () => {
     await expect(page).toHaveScreenshot("history.png");
   });
 
+  test("entrada (a receber do servidor)", async ({ page }) => {
+    await gotoApp(page);
+    await openFirstWc(page);
+    await openTab(page, "Entrada");
+
+    // Cabeçalho-resumo + botão de atualizar + revisões a receber.
+    await expect(page.getByText(/a receber/).first()).toBeVisible();
+    await expect(page.getByRole("button", { name: /Atualizar agora/ })).toBeVisible();
+    await expect(
+      page.getByText("Corrige cálculo de prazo no ProcessoService").first(),
+    ).toBeVisible();
+
+    await expect(page).toHaveScreenshot("entrada.png");
+  });
+
   test("branches (listagem por URL)", async ({ page }) => {
     await gotoApp(page);
     await openFirstWc(page);
@@ -203,5 +218,30 @@ test.describe("interações", () => {
 
     await page.getByPlaceholder("issue_1255").fill("issue_1255");
     await expect(confirmBtn).toBeEnabled();
+  });
+
+  test("histórico: botão direito na revisão revela as três ações", async ({ page }) => {
+    await gotoApp(page);
+    await openFirstWc(page);
+    await openTab(page, "Histórico");
+
+    await page.getByText("Refatora camada de persistência").click({ button: "right" });
+    await expect(page.getByRole("menuitem", { name: "Reverter alterações" })).toBeVisible();
+    await expect(page.getByRole("menuitem", { name: "Editar comentário" })).toBeVisible();
+    await expect(page.getByRole("menuitem", { name: "Copiar número da revisão" })).toBeVisible();
+  });
+
+  test("histórico: editar comentário da revisão envia o revprop", async ({ page }) => {
+    await gotoApp(page);
+    await openFirstWc(page);
+    await openTab(page, "Histórico");
+
+    // Ícone no detalhe abre o diálogo com o aviso e a mensagem atual.
+    await page.getByRole("button", { name: "Editar comentário da revisão" }).first().click();
+    await expect(page.getByText(/altera o comentário no servidor/)).toBeVisible();
+
+    await page.getByPlaceholder("Mensagem da revisão").fill("Mensagem corrigida");
+    await page.getByRole("button", { name: "Salvar comentário" }).click();
+    await expect(page.getByText("Comentário atualizado")).toBeVisible();
   });
 });

@@ -4,6 +4,7 @@ import { create } from "zustand";
 
 export type ViewId =
   | "overview"
+  | "incoming"
   | "changes"
   | "history"
   | "branches"

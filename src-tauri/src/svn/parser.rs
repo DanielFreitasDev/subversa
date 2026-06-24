@@ -371,6 +371,8 @@ pub fn hint_from_stderr(stderr: &str) -> Option<String> {
         Some("Conflito pendente — resolva os arquivos marcados e marque como resolvido.".into())
     } else if s.contains("E160013") {
         Some("Caminho não existe no servidor — confira a URL (use o navegador de branches).".into())
+    } else if s.contains("E165006") || s.contains("pre-revprop-change") {
+        Some("O servidor não permite editar comentários de revisão (falta o hook pre-revprop-change). Fale com o administrador do SVN.".into())
     } else if s.contains("E170001")
         || s.contains("E175013")
         || s.contains("E165001")

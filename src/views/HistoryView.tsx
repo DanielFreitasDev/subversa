@@ -2,10 +2,12 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { RefreshCw, Search } from "lucide-react";
 
 import * as api from "@/lib/api";
-import { RevisionLog, type RevisionTarget } from "@/components/history/RevisionLog";
+import { EditRevisionMessageDialog } from "@/components/dialogs/EditRevisionMessageDialog";
+import { RevisionLog, type RevisionActions, type RevisionTarget } from "@/components/history/RevisionLog";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Field";
 import { HelpPopover } from "@/components/ui/HelpPopover";
+import { useActions } from "@/hooks/useActions";
 import { useSelectedWc } from "@/hooks/useSelectedWc";
 import { HELP } from "@/lib/help";
 import type { LogEntry, WorkingCopy } from "@/lib/types";
@@ -19,6 +21,8 @@ function History_({ wc }: { wc: WorkingCopy }) {
   const [limit, setLimit] = useState(50);
   const [search, setSearch] = useState("");
   const [query, setQuery] = useState("");
+  const [editing, setEditing] = useState<LogEntry | null>(null);
+  const { revertRevision } = useActions();
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -42,13 +46,23 @@ function History_({ wc }: { wc: WorkingCopy }) {
     [wc.path, wc.repoRoot, wc.url],
   );
 
+  const actions = useMemo<RevisionActions>(
+    () => ({
+      onRevert: (e) => revertRevision(wc, e.revision),
+      onEditMessage: (e) => setEditing(e),
+    }),
+    [revertRevision, wc],
+  );
+
   return (
+    <>
     <RevisionLog
       entries={entries}
       target={target}
       loading={loading}
       error={error}
       onRetry={load}
+      actions={actions}
       listHeader={
         <div className="flex items-center gap-2 px-4 py-3">
           <div className="relative flex-1">
@@ -78,6 +92,15 @@ function History_({ wc }: { wc: WorkingCopy }) {
         ) : null
       }
     />
+    <EditRevisionMessageDialog
+      open={!!editing}
+      wcPath={wc.path}
+      revision={editing?.revision ?? ""}
+      initialMessage={editing?.message ?? ""}
+      onClose={() => setEditing(null)}
+      onSaved={load}
+    />
+    </>
   );
 }
 

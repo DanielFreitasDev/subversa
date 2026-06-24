@@ -5,17 +5,19 @@
  */
 
 import { useCallback, useEffect, useState } from "react";
-import { FileDiff, History, ServerCrash } from "lucide-react";
+import { Copy, FileDiff, History, Pencil, ServerCrash, Undo2 } from "lucide-react";
 
 import * as api from "@/lib/api";
 import { DiffViewer } from "@/components/diff/DiffViewer";
 import type { ContentRef } from "@/components/diff/FileBlock";
 import { Avatar } from "@/components/ui/Avatar";
-import { Button } from "@/components/ui/Button";
+import { Button, IconButton } from "@/components/ui/Button";
+import { ContextMenu, useContextMenu, type MenuItem } from "@/components/ui/ContextMenu";
 import { Empty } from "@/components/ui/Empty";
 import { Loading } from "@/components/ui/Spinner";
 import type { DiffFile } from "@/lib/diff";
 import type { LogEntry, LogPath } from "@/lib/types";
+import { toast } from "@/store/toast";
 import { actionMeta, cn, formatAbsolute, formatRelative } from "@/lib/utils";
 
 /** De onde sai o diff: caminho de WC ou URL remota. */
@@ -28,19 +30,67 @@ export interface RevisionTarget {
   baseUrl: string;
 }
 
+/** Ações sobre uma revisão (menu de contexto na lista + botões no detalhe). */
+export interface RevisionActions {
+  /** Reverter as mudanças da revisão na cópia local (merge reverso). */
+  onRevert?: (entry: LogEntry) => void;
+  /** Editar o comentário (mensagem) da revisão no servidor. */
+  onEditMessage?: (entry: LogEntry) => void;
+}
+
+/** Copia o número da revisão para a área de transferência. */
+function copyRevision(revision: string) {
+  navigator.clipboard
+    ?.writeText(revision)
+    .then(() => toast.success(`Revisão r${revision} copiada`))
+    .catch(() => toast.error("Não consegui copiar a revisão"));
+}
+
+/** Itens do menu: copiar (sempre) e revert/editar quando houver handler. */
+function revisionMenuItems(entry: LogEntry, actions?: RevisionActions): MenuItem[] {
+  const items: MenuItem[] = [];
+  if (actions?.onRevert) {
+    items.push({
+      id: "revert",
+      label: "Reverter alterações",
+      icon: <Undo2 className="size-4" />,
+      onSelect: () => actions.onRevert!(entry),
+    });
+  }
+  if (actions?.onEditMessage) {
+    items.push({
+      id: "edit",
+      label: "Editar comentário",
+      icon: <Pencil className="size-4" />,
+      onSelect: () => actions.onEditMessage!(entry),
+    });
+  }
+  items.push({
+    id: "copy",
+    label: "Copiar número da revisão",
+    icon: <Copy className="size-4" />,
+    separatorBefore: items.length > 0,
+    onSelect: () => copyRevision(entry.revision),
+  });
+  return items;
+}
+
 export function RevisionItem({
   entry,
   active,
   onClick,
+  onContext,
 }: {
   entry: LogEntry;
   active: boolean;
   onClick: () => void;
+  onContext?: (e: React.MouseEvent) => void;
 }) {
   const firstLine = entry.message.split("\n")[0] || "(sem mensagem)";
   return (
     <button
       onClick={onClick}
+      onContextMenu={onContext}
       className={cn(
         "flex w-full items-start gap-3 border-b border-line/60 px-4 py-3 text-left transition-colors",
         active ? "bg-panel-3" : "hover:bg-panel-2",
@@ -69,9 +119,11 @@ export function RevisionItem({
 export function RevisionDetail({
   entry,
   target,
+  actions,
 }: {
   entry: LogEntry;
   target: RevisionTarget;
+  actions?: RevisionActions;
 }) {
   const [sel, setSel] = useState<"all" | LogPath>("all");
   const [diff, setDiff] = useState("");
@@ -120,14 +172,40 @@ export function RevisionDetail({
       {/* Topo: cabeçalho, mensagem e arquivos clicáveis. */}
       <div className="flex max-h-[45%] shrink-0 flex-col border-b border-line">
         <div className="px-5 pt-4">
-          <div className="flex items-center gap-3">
-            <Avatar name={entry.author} size={38} />
-            <div className="min-w-0">
-              <div className="flex items-center gap-2">
-                <span className="font-mono text-sm font-semibold text-brand">r{entry.revision}</span>
-                <span className="text-[13px] font-medium text-ink">{entry.author}</span>
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex min-w-0 items-center gap-3">
+              <Avatar name={entry.author} size={38} />
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="font-mono text-sm font-semibold text-brand">r{entry.revision}</span>
+                  <span className="text-[13px] font-medium text-ink">{entry.author}</span>
+                </div>
+                <div className="text-[11px] text-faint">{formatAbsolute(entry.date)}</div>
               </div>
-              <div className="text-[11px] text-faint">{formatAbsolute(entry.date)}</div>
+            </div>
+            <div className="-mr-1.5 flex shrink-0 items-center gap-0.5">
+              {actions?.onRevert && (
+                <IconButton
+                  label="Reverter as alterações desta revisão"
+                  onClick={() => actions.onRevert!(entry)}
+                >
+                  <Undo2 className="size-4" />
+                </IconButton>
+              )}
+              {actions?.onEditMessage && (
+                <IconButton
+                  label="Editar comentário da revisão"
+                  onClick={() => actions.onEditMessage!(entry)}
+                >
+                  <Pencil className="size-4" />
+                </IconButton>
+              )}
+              <IconButton
+                label="Copiar número da revisão"
+                onClick={() => copyRevision(entry.revision)}
+              >
+                <Copy className="size-4" />
+              </IconButton>
             </div>
           </div>
           <p className="selectable mt-3 whitespace-pre-wrap text-[13px] leading-relaxed text-ink">
@@ -220,6 +298,9 @@ export function RevisionLog({
   listFooter,
   listWidth = 440,
   emptyTitle = "Sem revisões",
+  emptyDescription,
+  emptyIcon,
+  actions,
 }: {
   entries: LogEntry[];
   target: RevisionTarget;
@@ -230,8 +311,12 @@ export function RevisionLog({
   listFooter?: React.ReactNode;
   listWidth?: number;
   emptyTitle?: string;
+  emptyDescription?: string;
+  emptyIcon?: React.ReactNode;
+  actions?: RevisionActions;
 }) {
   const [selected, setSelected] = useState<string | null>(null);
+  const ctx = useContextMenu();
 
   // Mantém a seleção se ainda existir; senão, cai para a primeira revisão.
   useEffect(() => {
@@ -243,58 +328,70 @@ export function RevisionLog({
   const selectedEntry = entries.find((e) => e.revision === selected) ?? null;
 
   return (
-    <div className="flex h-full overflow-hidden">
-      <div
-        className="flex shrink-0 flex-col border-r border-line"
-        style={{ width: listWidth }}
-      >
-        {listHeader}
-        <div className="min-h-0 flex-1 overflow-y-auto">
-          {loading && entries.length === 0 ? (
-            <Loading label="Carregando histórico…" />
-          ) : error ? (
-            <Empty
-              icon={<ServerCrash className="size-7" />}
-              title="Não consegui ler o histórico"
-              description={error}
-              action={
-                onRetry && (
-                  <Button variant="outline" onClick={onRetry}>
-                    Tentar de novo
-                  </Button>
-                )
-              }
-            />
-          ) : entries.length === 0 ? (
-            <Empty icon={<History className="size-7" />} title={emptyTitle} />
+    <>
+      <div className="flex h-full overflow-hidden">
+        <div
+          className="flex shrink-0 flex-col border-r border-line"
+          style={{ width: listWidth }}
+        >
+          {listHeader}
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            {loading && entries.length === 0 ? (
+              <Loading label="Carregando histórico…" />
+            ) : error ? (
+              <Empty
+                icon={<ServerCrash className="size-7" />}
+                title="Não consegui ler o histórico"
+                description={error}
+                action={
+                  onRetry && (
+                    <Button variant="outline" onClick={onRetry}>
+                      Tentar de novo
+                    </Button>
+                  )
+                }
+              />
+            ) : entries.length === 0 ? (
+              <Empty
+                icon={emptyIcon ?? <History className="size-7" />}
+                title={emptyTitle}
+                description={emptyDescription}
+              />
+            ) : (
+              <>
+                {entries.map((e) => (
+                  <RevisionItem
+                    key={e.revision}
+                    entry={e}
+                    active={selected === e.revision}
+                    onClick={() => setSelected(e.revision)}
+                    onContext={(ev) => {
+                      setSelected(e.revision);
+                      ctx.open(ev, revisionMenuItems(e, actions));
+                    }}
+                  />
+                ))}
+                {listFooter}
+              </>
+            )}
+          </div>
+        </div>
+
+        <div className="min-w-0 flex-1">
+          {selectedEntry ? (
+            <RevisionDetail entry={selectedEntry} target={target} actions={actions} />
           ) : (
-            <>
-              {entries.map((e) => (
-                <RevisionItem
-                  key={e.revision}
-                  entry={e}
-                  active={selected === e.revision}
-                  onClick={() => setSelected(e.revision)}
-                />
-              ))}
-              {listFooter}
-            </>
+            !loading &&
+            !error && (
+              <div className="flex h-full items-center justify-center text-sm text-faint">
+                Selecione uma revisão
+              </div>
+            )
           )}
         </div>
       </div>
 
-      <div className="min-w-0 flex-1">
-        {selectedEntry ? (
-          <RevisionDetail entry={selectedEntry} target={target} />
-        ) : (
-          !loading &&
-          !error && (
-            <div className="flex h-full items-center justify-center text-sm text-faint">
-              Selecione uma revisão
-            </div>
-          )
-        )}
-      </div>
-    </div>
+      <ContextMenu menu={ctx.menu} onClose={ctx.close} />
+    </>
   );
 }
