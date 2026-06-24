@@ -9,6 +9,7 @@ import { invoke } from "@tauri-apps/api/core";
 import type {
   AppConfig,
   BlameLine,
+  CommandLogEntry,
   CommandOutput,
   ListEntry,
   LogEntry,
@@ -152,3 +153,14 @@ export const openExternalDiff = (target: string, tool?: string) =>
   invoke<void>("open_external_diff", { target, tool: tool ?? null });
 
 export const suggestedBaseDir = () => invoke<string>("suggested_base_dir");
+
+// --- registro de comandos (auditoria) --------------------------------------
+
+/** Histórico de comandos svn desta sessão (mais antigo → mais recente). */
+export const getCommandLog = () => invoke<CommandLogEntry[]>("get_command_log");
+
+/** Limpa o histórico em memória (o arquivo de log permanece). */
+export const clearCommandLog = () => invoke<void>("clear_command_log");
+
+/** Caminho do arquivo de log persistente. */
+export const commandLogPath = () => invoke<string>("command_log_path");

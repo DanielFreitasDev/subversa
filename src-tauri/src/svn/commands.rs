@@ -1133,6 +1133,28 @@ pub fn open_external_diff(
     spawn_detached(cmd).map_err(|e| format!("não consegui abrir {tool}: {e}"))
 }
 
+// ---------------------------------------------------------------------------
+// Registro de comandos (auditoria)
+// ---------------------------------------------------------------------------
+
+/// Histórico de comandos `svn` desta sessão (mais antigo → mais recente).
+#[tauri::command]
+pub fn get_command_log() -> Vec<CommandLogEntry> {
+    super::audit::snapshot()
+}
+
+/// Limpa o histórico em memória (o arquivo de log permanece para auditoria).
+#[tauri::command]
+pub fn clear_command_log() {
+    super::audit::clear();
+}
+
+/// Caminho do arquivo de log persistente (para abrir no gerenciador de arquivos).
+#[tauri::command]
+pub fn command_log_path() -> String {
+    super::audit::path()
+}
+
 /// Diretório-base padrão sugerido na primeira execução (cwd se contiver WCs).
 #[tauri::command]
 pub fn suggested_base_dir() -> String {

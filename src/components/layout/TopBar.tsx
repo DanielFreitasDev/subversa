@@ -29,7 +29,8 @@ export function TopBar() {
   const wc = useSelectedWc();
   const { update } = useActions();
 
-  const isContextual = view !== "overview" && view !== "settings" && view !== "repos";
+  const isContextual =
+    view !== "overview" && view !== "settings" && view !== "repos" && view !== "log";
 
   return (
     <header

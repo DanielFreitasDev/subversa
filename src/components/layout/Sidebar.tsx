@@ -10,6 +10,7 @@ import {
   RefreshCw,
   Settings,
   Sun,
+  Terminal,
   TreePine,
 } from "lucide-react";
 
@@ -116,6 +117,16 @@ export function Sidebar() {
           <Database className="size-4" />
           Repositórios
         </button>
+        <button
+          onClick={() => setView("log")}
+          className={cn(
+            "flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-[13px] font-medium transition-colors",
+            view === "log" ? "bg-brand/12 text-brand" : "text-muted hover:bg-panel-2 hover:text-ink",
+          )}
+        >
+          <Terminal className="size-4" />
+          Registro
+        </button>
       </div>
 
       <div className="mt-4 flex items-center justify-between px-4">
@@ -168,11 +179,13 @@ export function Sidebar() {
               selected?.path === wc.path &&
               view !== "overview" &&
               view !== "settings" &&
-              view !== "repos"
+              view !== "repos" &&
+              view !== "log"
             }
             onClick={() => {
               select(wc.path);
-              if (view === "overview" || view === "settings" || view === "repos") setView("changes");
+              if (view === "overview" || view === "settings" || view === "repos" || view === "log")
+                setView("changes");
             }}
           />
         ))}

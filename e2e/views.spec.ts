@@ -145,6 +145,27 @@ test.describe("tema claro", () => {
   });
 });
 
+test.describe("registro de comandos", () => {
+  // Fuso fixo (UTC-3) → os horários renderizados ficam determinísticos no screenshot.
+  test.use({ timezoneId: "America/Sao_Paulo" });
+
+  test("registro lista os comandos svn executados", async ({ page }) => {
+    await gotoApp(page);
+    await page.getByRole("button", { name: "Registro", exact: true }).click();
+    await page.waitForTimeout(400);
+
+    await expect(page.getByRole("heading", { name: "Registro" })).toBeVisible();
+    await expect(page.getByText("6 comandos svn nesta sessão")).toBeVisible();
+    // Mensagem do commit (substring única) + o erro destacado.
+    await expect(page.getByText("Corrige cálculo de prazo no ProcessoService")).toBeVisible();
+    await expect(page.getByText("ERRO 1")).toBeVisible();
+    // Horário determinístico (14:58 UTC → 11:58 em UTC-3).
+    await expect(page.getByText("11:58:12.100")).toBeVisible();
+
+    await expect(page).toHaveScreenshot("log.png");
+  });
+});
+
 // Fluxos de escrita (sem screenshot): exercitam confirmações e safety rails.
 test.describe("interações", () => {
   test("commit direto na trunk pede confirmação e envia", async ({ page }) => {

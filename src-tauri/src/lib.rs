@@ -31,6 +31,9 @@ pub fn run() {
             config: Mutex::new(config),
         })
         .setup(|app| {
+            // Coletor de auditoria dos comandos svn (arquivo + evento p/ a UI).
+            svn::audit::init(app.handle().clone());
+
             // Reaplica o ícone embutido na janela após sua criação. Garante o
             // logo no título e na barra de tarefas do Linux (_NET_WM_ICON),
             // inclusive em modo dev, sem depender do empacotamento.
@@ -82,6 +85,10 @@ pub fn run() {
             svn::commands::reveal_in_file_manager,
             svn::commands::open_external_diff,
             svn::commands::suggested_base_dir,
+            // registro / auditoria
+            svn::commands::get_command_log,
+            svn::commands::clear_command_log,
+            svn::commands::command_log_path,
         ])
         .on_window_event(move |_window, event| {
             // Ao fechar a janela, encerra a conexão SSH mestre (best-effort).

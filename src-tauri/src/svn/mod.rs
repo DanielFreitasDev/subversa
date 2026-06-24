@@ -1,5 +1,6 @@
 //! Núcleo de integração com o Subversion.
 
+pub mod audit;
 pub mod commands;
 pub mod conn;
 pub mod parser;

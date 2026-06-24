@@ -15,6 +15,7 @@ import {
   RotateCcw,
   Search,
   Settings,
+  Terminal,
   TreePine,
   Upload,
   Wrench,
@@ -79,6 +80,14 @@ export function CommandPalette() {
         keywords: "repositorio repos navegar arvore remoto svn repositories",
         section: "Navegação",
         run: close(() => setView("repos")),
+      },
+      {
+        id: "nav-log",
+        title: "Abrir Registro de comandos",
+        icon: <Terminal className="size-4" />,
+        keywords: "registro log comandos svn auditoria historico terminal",
+        section: "Navegação",
+        run: close(() => setView("log")),
       },
       {
         id: "checkout",

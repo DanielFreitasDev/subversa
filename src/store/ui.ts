@@ -9,6 +9,7 @@ export type ViewId =
   | "branches"
   | "merge"
   | "repos"
+  | "log"
   | "settings";
 
 export type DiffMode = "unified" | "split";

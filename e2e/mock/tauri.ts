@@ -20,6 +20,7 @@ export interface MockData {
   log: Record<string, unknown>[];
   branchList: Record<string, unknown>[];
   rootList: Record<string, unknown>[];
+  commandLog: Record<string, unknown>[];
 }
 
 export function buildFixtures(theme: Theme): MockData {
@@ -152,7 +153,25 @@ export function buildFixtures(theme: Theme): MockData {
     { name: "README.md", kind: "file", size: 6 * 1024 * 1024, revision: "4790", author: "maria.silva", date: "2026-06-16T10:00:00.000Z" },
   ];
 
-  return { config, wcs, status, diff, log, branchList, rootList };
+  // Registro de comandos: horários em UTC (a spec fixa o fuso em UTC-3 para o
+  // screenshot ser determinístico). Um erro no fim cobre o realce de falha.
+  const t = (h: number, m: number, s: number, ms: number) => Date.UTC(2026, 5, 23, h, m, s, ms);
+  const commandLog = [
+    { seq: 1, timestampMs: t(14, 58, 12, 100), durationMs: 84, success: true, code: 0,
+      command: "svn status --xml --non-interactive -- /home/daniel/projetos/sna" },
+    { seq: 2, timestampMs: t(14, 58, 12, 230), durationMs: 51, success: true, code: 0,
+      command: "svn info --xml -- /home/daniel/projetos/sna" },
+    { seq: 3, timestampMs: t(14, 58, 40, 500), durationMs: 1203, success: true, code: 0,
+      command: "svn update --non-interactive --accept postpone -- /home/daniel/projetos/sna" },
+    { seq: 4, timestampMs: t(14, 59, 2, 0), durationMs: 92, success: true, code: 0,
+      command: "svn diff --internal-diff -- /home/daniel/projetos/sna/src/processo/ProcessoService.java" },
+    { seq: 5, timestampMs: t(14, 59, 30, 0), durationMs: 642, success: true, code: 0,
+      command: 'svn commit --non-interactive -m "Corrige cálculo de prazo no ProcessoService" -- /home/daniel/projetos/sna' },
+    { seq: 6, timestampMs: t(14, 59, 45, 0), durationMs: 410, success: false, code: 1,
+      command: "svn switch --non-interactive --accept postpone -- svn+ssh://svn.tjsc.local/usr/svn/sna/branches/x /home/daniel/projetos/sna" },
+  ];
+
+  return { config, wcs, status, diff, log, branchList, rootList, commandLog };
 }
 
 export function tauriInit(fx: MockData) {
@@ -213,6 +232,12 @@ export function tauriInit(fx: MockData) {
       case "reveal_in_file_manager":
       case "open_external_diff":
         return null;
+      case "get_command_log":
+        return fx.commandLog;
+      case "clear_command_log":
+        return null;
+      case "command_log_path":
+        return "/home/daniel/.local/share/subversa/svn.log";
       case "checkout": case "update": case "commit": case "svn_add": case "revert":
       case "remove": case "create_branch": case "switch_wc": case "merge": case "resolve":
       case "cleanup": case "delete_remote": case "export_path": case "import_path":

@@ -2,12 +2,13 @@
 
 use std::path::Path;
 use std::process::Stdio;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use tokio::io::{AsyncRead, AsyncReadExt};
 use tokio::process::Command;
 use tokio::time::timeout;
 
+use super::audit;
 use super::conn;
 use super::parser::hint_from_stderr;
 use super::types::{CommandOutput, SshMode};
@@ -105,6 +106,24 @@ pub async fn run(
 }
 
 pub async fn run_limited(
+    args: &[&str],
+    cwd: Option<&Path>,
+    mode: SshMode,
+    limit: OutputLimit,
+) -> Result<CommandOutput, String> {
+    // Funil único de telemetria: mede a duração e registra TODO comando svn
+    // (sucesso, falha, timeout ou erro de spawn) num só ponto de saída.
+    let started = Instant::now();
+    let result = run_inner(args, cwd, mode, limit).await;
+    let (success, code) = match &result {
+        Ok(out) => (out.success, out.code),
+        Err(_) => (false, None),
+    };
+    audit::record(&display_command(args), success, code, started.elapsed());
+    result
+}
+
+async fn run_inner(
     args: &[&str],
     cwd: Option<&Path>,
     mode: SshMode,

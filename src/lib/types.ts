@@ -15,6 +15,21 @@ export interface CommandOutput {
   command: string;
 }
 
+/** Uma entrada do registro de comandos (auditoria do que o app rodou no `svn`). */
+export interface CommandLogEntry {
+  /** Sequência monotônica desde o início da sessão (id estável). */
+  seq: number;
+  /** Momento do término, em epoch milissegundos (UTC). */
+  timestampMs: number;
+  /** Linha do comando exibida (ex.: `svn commit -m "..."`). Nunca contém senha. */
+  command: string;
+  success: boolean;
+  /** Código de saída do processo (null se nem rodou, ou timeout). */
+  code: number | null;
+  /** Duração total da execução, em milissegundos. */
+  durationMs: number;
+}
+
 export interface WorkingCopy {
   path: string;
   name: string;

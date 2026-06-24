@@ -31,6 +31,24 @@ pub struct CommandOutput {
     pub command: String,
 }
 
+/// Uma entrada do registro de comandos (auditoria do que o app rodou no `svn`).
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CommandLogEntry {
+    /// Sequência monotônica desde o início da sessão (id estável para a UI).
+    pub seq: u64,
+    /// Momento do término, em epoch milissegundos (UTC). A UI formata em local.
+    pub timestamp_ms: u64,
+    /// Linha do comando exibida (ex.: `svn commit -m "..."`). Nunca contém senha.
+    pub command: String,
+    /// O `svn` terminou com sucesso (código 0)?
+    pub success: bool,
+    /// Código de saída do processo (None se nem chegou a rodar, ou timeout).
+    pub code: Option<i32>,
+    /// Duração total da execução, em milissegundos.
+    pub duration_ms: u64,
+}
+
 /// Disponibilidade dos binários externos exigidos em tempo de execução.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
