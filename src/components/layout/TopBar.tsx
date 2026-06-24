@@ -107,7 +107,7 @@ export function TopBar() {
         >
           <Search className="size-3.5" />
           <span className="hidden sm:inline">Comandos</span>
-          <Kbd className="ml-1 gap-0.5">
+          <Kbd className="ml-1 gap-2">
             <span>⌘</span>
             <span>K</span>
           </Kbd>
