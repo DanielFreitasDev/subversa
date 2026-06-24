@@ -23,6 +23,7 @@ import { Button } from "@/components/ui/Button";
 import { Input, Label, Switch, Textarea } from "@/components/ui/Field";
 import { Modal } from "@/components/ui/Modal";
 import { Segmented } from "@/components/ui/Segmented";
+import { REPO_OP_HELP } from "@/lib/help";
 import { extractRevision, reportOutput, tryRun } from "@/lib/op";
 import { baseName, decodeUrl, decodeUrlSafe } from "@/lib/utils";
 import { useRepoBrowserStore } from "@/store/repoBrowser";
@@ -229,6 +230,7 @@ export function RepoOpDialog() {
       icon={meta.icon}
       title={meta.title}
       description={`${node.kind === "dir" ? "Pasta" : "Arquivo"}: ${leaf}`}
+      help={REPO_OP_HELP[kind]}
       footer={
         <>
           <Button variant="ghost" onClick={() => closeDialog()} disabled={busy}>

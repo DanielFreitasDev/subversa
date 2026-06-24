@@ -6,6 +6,7 @@ import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useFocusTrap } from "@/hooks/useFocusTrap";
 import { IconButton } from "./Button";
+import { HelpPopover, type HelpContent } from "./HelpPopover";
 
 type Size = "sm" | "md" | "lg" | "xl";
 
@@ -27,6 +28,8 @@ export interface ModalProps {
   footer?: React.ReactNode;
   /** Impede fechar ao clicar fora (para operações em andamento). */
   locked?: boolean;
+  /** Explicação didática (ícone ? no cabeçalho). */
+  help?: HelpContent;
   className?: string;
 }
 
@@ -40,6 +43,7 @@ export function Modal({
   children,
   footer,
   locked,
+  help,
   className,
 }: ModalProps) {
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -113,10 +117,15 @@ export function Modal({
                     </p>
                   )}
                 </div>
-                {!locked && (
-                  <IconButton label="Fechar" onClick={onClose} className="-mr-1.5 -mt-1">
-                    <X className="size-4" />
-                  </IconButton>
+                {(help || !locked) && (
+                  <div className="-mr-1.5 -mt-1 flex shrink-0 items-center gap-0.5">
+                    {help && <HelpPopover content={help} className="size-9" />}
+                    {!locked && (
+                      <IconButton label="Fechar" onClick={onClose}>
+                        <X className="size-4" />
+                      </IconButton>
+                    )}
+                  </div>
                 )}
               </div>
             )}

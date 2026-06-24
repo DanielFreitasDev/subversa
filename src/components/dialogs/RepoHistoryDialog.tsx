@@ -12,6 +12,7 @@ import { RevisionLog, type RevisionTarget } from "@/components/history/RevisionL
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Field";
 import { Modal } from "@/components/ui/Modal";
+import { repoHistoryHelp } from "@/lib/help";
 import type { LogEntry } from "@/lib/types";
 import { cn, decodeUrl } from "@/lib/utils";
 import { useRepoBrowserStore } from "@/store/repoBrowser";
@@ -97,6 +98,7 @@ export function RepoHistoryDialog() {
       icon={browse ? <ListFilter className="size-5" /> : <History className="size-5" />}
       title={browse ? "Navegar alterações" : "Histórico"}
       description={decodeUrl(url)}
+      help={repoHistoryHelp(browse)}
       className="max-w-6xl"
     >
       <div className="h-[72vh]">

@@ -13,7 +13,9 @@ import {
 import * as api from "@/lib/api";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Field";
+import { HelpPopover, type HelpContent } from "@/components/ui/HelpPopover";
 import { useSelectedWc } from "@/hooks/useSelectedWc";
+import { MERGE_HELP } from "@/lib/help";
 import { extractRevision, reportOutput, tryRun } from "@/lib/op";
 import type { StatusEntry, WorkingCopy } from "@/lib/types";
 import { cn, decodeUrl } from "@/lib/utils";
@@ -60,12 +62,14 @@ function Card({
   description,
   accent,
   children,
+  help,
 }: {
   icon: React.ReactNode;
   title: string;
   description: string;
   accent: "trunk" | "branch" | "neutral";
   children: React.ReactNode;
+  help?: HelpContent;
 }) {
   const ring =
     accent === "trunk"
@@ -89,7 +93,10 @@ function Card({
           {icon}
         </div>
         <div className="min-w-0 flex-1">
-          <h3 className="text-[14px] font-semibold text-ink">{title}</h3>
+          <div className="flex items-center gap-1.5">
+            <h3 className="text-[14px] font-semibold text-ink">{title}</h3>
+            {help && <HelpPopover content={help} />}
+          </div>
           <p className="mt-0.5 text-[12px] leading-relaxed text-muted">{description}</p>
         </div>
       </div>
@@ -277,6 +284,7 @@ function Merge({ wc }: { wc: WorkingCopy }) {
               title="Receber a linha principal (sync)"
               description="Traz para a sua branch o que andou no trunk e commita o merge. Faça isso antes de publicar."
               accent="branch"
+              help={MERGE_HELP.sync}
             >
               {!mainlineUrl && (
                 <div className="mb-3 flex items-center gap-2 rounded-lg bg-warn/10 px-3 py-2 text-[12px] text-warn">
@@ -301,6 +309,7 @@ function Merge({ wc }: { wc: WorkingCopy }) {
               title="Publicar na linha principal (reintegrar)"
               description="Troca a WC para o trunk, atualiza e mescla a sua branch. Depois você revisa e commita — esse commit é a publicação."
               accent="trunk"
+              help={MERGE_HELP.publish}
             >
               <Button variant="primary" onClick={runPublish} loading={busy === "publish"} disabled={!mainlineUrl || !!busy}>
                 {busy !== "publish" && <GitMerge className="size-4" />}
@@ -314,6 +323,7 @@ function Merge({ wc }: { wc: WorkingCopy }) {
             title="Reintegrar uma branch no trunk"
             description="Sua WC está na linha principal. Informe a branch a mesclar; depois revise e commite na aba Alterações."
             accent="trunk"
+            help={MERGE_HELP.reintegrate}
           >
             <Input
               value={branchUrl}

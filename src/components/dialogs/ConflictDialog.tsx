@@ -6,6 +6,7 @@ import { DiffViewer } from "@/components/diff/DiffViewer";
 import { Modal } from "@/components/ui/Modal";
 import { Loading } from "@/components/ui/Spinner";
 import { reportOutput, tryRun } from "@/lib/op";
+import { HELP } from "@/lib/help";
 import { baseName } from "@/lib/utils";
 import { useConfigStore } from "@/store/config";
 
@@ -92,6 +93,7 @@ export function ConflictDialog({
       icon={<GitMerge className="size-5" />}
       title="Resolver conflito"
       description={path ? baseName(path) : undefined}
+      help={HELP.conflict}
     >
       <div className="space-y-2">
         <div className="flex gap-2">

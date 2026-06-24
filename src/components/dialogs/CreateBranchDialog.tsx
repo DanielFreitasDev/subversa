@@ -7,6 +7,7 @@ import { Input, Label, Switch } from "@/components/ui/Field";
 import { Modal } from "@/components/ui/Modal";
 import { useSelectedWc } from "@/hooks/useSelectedWc";
 import { extractRevision, reportOutput, tryRun } from "@/lib/op";
+import { HELP } from "@/lib/help";
 import { baseName, decodeUrl } from "@/lib/utils";
 import { toast } from "@/store/toast";
 import { useUiStore } from "@/store/ui";
@@ -105,6 +106,7 @@ export function CreateBranchDialog() {
       icon={<GitBranch className="size-5" />}
       title="Criar branch"
       description={`A partir de ${wc.name} (${wc.kind === "trunk" ? "trunk" : wc.branchLabel})`}
+      help={HELP.createBranch}
       footer={
         <>
           <Button variant="ghost" onClick={() => setOpen(false)} disabled={busy}>

@@ -2,7 +2,9 @@ import { useMemo, useRef, useState } from "react";
 import { Columns2, FoldVertical, Rows3, UnfoldVertical, WrapText } from "lucide-react";
 
 import { parseUnifiedDiff, type DiffFile } from "@/lib/diff";
+import { HELP } from "@/lib/help";
 import { cn } from "@/lib/utils";
+import { HelpPopover } from "@/components/ui/HelpPopover";
 import { Segmented } from "@/components/ui/Segmented";
 import { useUiStore, type DiffMode } from "@/store/ui";
 
@@ -178,6 +180,7 @@ export function DiffViewer({
               {allCollapsed ? <UnfoldVertical className="size-3.5" /> : <FoldVertical className="size-3.5" />}
             </button>
           )}
+          <HelpPopover content={HELP.diff} />
         </div>
       </div>
 

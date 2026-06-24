@@ -19,8 +19,10 @@ import { Button } from "@/components/ui/Button";
 import { Loading } from "@/components/ui/Spinner";
 import { Textarea } from "@/components/ui/Field";
 import { Tooltip } from "@/components/ui/Tooltip";
+import { HelpPopover } from "@/components/ui/HelpPopover";
 import { useSelectedWc } from "@/hooks/useSelectedWc";
 import { useStatus } from "@/hooks/useStatus";
+import { HELP } from "@/lib/help";
 import { extractRevision, reportOutput, tryRun } from "@/lib/op";
 import type { StatusEntry, WorkingCopy } from "@/lib/types";
 import { baseName, cn, dirName, statusMeta } from "@/lib/utils";
@@ -324,6 +326,7 @@ function Changes({ wc }: { wc: WorkingCopy }) {
             {selectedEntries.length}/{selectableEntries.length} selecionados
           </label>
           <div className="flex items-center gap-1">
+            <HelpPopover content={HELP.changes} />
             <Tooltip label="Conferir novidades no servidor">
               <Button variant="ghost" size="icon" onClick={checkServer} disabled={checkingServer}>
                 {checkingServer ? (

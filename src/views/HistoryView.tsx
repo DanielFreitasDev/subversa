@@ -5,7 +5,9 @@ import * as api from "@/lib/api";
 import { RevisionLog, type RevisionTarget } from "@/components/history/RevisionLog";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Field";
+import { HelpPopover } from "@/components/ui/HelpPopover";
 import { useSelectedWc } from "@/hooks/useSelectedWc";
+import { HELP } from "@/lib/help";
 import type { LogEntry, WorkingCopy } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { NeedWorkingCopy } from "./_shared";
@@ -62,6 +64,7 @@ function History_({ wc }: { wc: WorkingCopy }) {
           <Button variant="ghost" size="icon" onClick={() => load()}>
             <RefreshCw className={cn("size-4", loading && "animate-spin")} />
           </Button>
+          <HelpPopover content={HELP.history} />
         </div>
       }
       listFooter={

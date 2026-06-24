@@ -17,8 +17,10 @@ import * as api from "@/lib/api";
 import { BranchBadge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Empty } from "@/components/ui/Empty";
+import { HelpPopover } from "@/components/ui/HelpPopover";
 import { Loading } from "@/components/ui/Spinner";
 import { useActions } from "@/hooks/useActions";
+import { HELP } from "@/lib/help";
 import type { WorkingCopy } from "@/lib/types";
 import { cn, formatRelative } from "@/lib/utils";
 import { useConfigStore } from "@/store/config";
@@ -179,7 +181,10 @@ export function OverviewView() {
       <div className="mx-auto max-w-5xl p-6">
         <div className="mb-5 flex items-center justify-between gap-3">
           <div>
-            <h1 className="text-lg font-semibold text-ink">Visão geral</h1>
+            <div className="flex items-center gap-1.5">
+              <h1 className="text-lg font-semibold text-ink">Visão geral</h1>
+              <HelpPopover content={HELP.overview} />
+            </div>
             <p className="truncate text-[12px] text-faint" title={baseDir}>
               {baseDir || "Nenhuma pasta de trabalho aberta"}
             </p>

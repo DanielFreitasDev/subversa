@@ -10,7 +10,9 @@ import { ArrowRight, Server } from "lucide-react";
 import * as api from "@/lib/api";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Field";
+import { HelpPopover } from "@/components/ui/HelpPopover";
 import { Logo } from "@/components/ui/Logo";
+import { HELP } from "@/lib/help";
 import { useConfigStore } from "@/store/config";
 import { toast } from "@/store/toast";
 import { useWorkspaceStore } from "@/store/workspace";
@@ -60,6 +62,7 @@ export function SetupView() {
           <label className="block">
             <span className="mb-1.5 flex items-center gap-1.5 text-[13px] font-medium text-ink">
               <Server className="size-3.5 text-brand" /> Host SSH
+              <HelpPopover content={HELP.setupHost} className="ml-0.5" />
             </span>
             <Input
               value={host}

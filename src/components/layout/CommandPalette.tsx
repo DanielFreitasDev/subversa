@@ -25,6 +25,8 @@ import {
 import { revealInFileManager } from "@/lib/api";
 import { tryRun } from "@/lib/op";
 import { cn } from "@/lib/utils";
+import { HelpPopover } from "@/components/ui/HelpPopover";
+import { HELP } from "@/lib/help";
 import { useFocusTrap } from "@/hooks/useFocusTrap";
 import { useActions } from "@/hooks/useActions";
 import { useSelectedWc } from "@/hooks/useSelectedWc";
@@ -325,6 +327,7 @@ export function CommandPalette() {
                 }
                 aria-label="Buscar comando"
               />
+              <HelpPopover content={HELP.commandPalette} />
             </div>
             <div id="palette-list" role="listbox" className="max-h-[52vh] overflow-y-auto p-1.5">
               {filtered.length === 0 && (

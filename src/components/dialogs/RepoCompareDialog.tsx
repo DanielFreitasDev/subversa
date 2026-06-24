@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Field";
 import { Modal } from "@/components/ui/Modal";
 import { Loading } from "@/components/ui/Spinner";
+import { HELP } from "@/lib/help";
 import { decodeUrl } from "@/lib/utils";
 import { useRepoBrowserStore } from "@/store/repoBrowser";
 
@@ -66,6 +67,7 @@ export function RepoCompareDialog() {
       icon={<GitCompareArrows className="size-5" />}
       title="Comparar com…"
       description={`Base: ${decodeUrl(base)}`}
+      help={HELP.compare}
       className="max-w-6xl"
     >
       <div className="flex h-[72vh] flex-col">

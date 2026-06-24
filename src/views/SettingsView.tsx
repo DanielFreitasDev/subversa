@@ -17,8 +17,10 @@ import {
 import * as api from "@/lib/api";
 import { Button } from "@/components/ui/Button";
 import { Input, Switch } from "@/components/ui/Field";
+import { HelpPopover, type HelpContent } from "@/components/ui/HelpPopover";
 import { Logo } from "@/components/ui/Logo";
 import { Segmented } from "@/components/ui/Segmented";
+import { HELP } from "@/lib/help";
 import { reportOutput, tryRun } from "@/lib/op";
 import type { AppConfig, Project } from "@/lib/types";
 import { decodeUrl } from "@/lib/utils";
@@ -30,11 +32,13 @@ function Section({
   icon,
   title,
   description,
+  help,
   children,
 }: {
   icon: React.ReactNode;
   title: string;
   description?: string;
+  help?: HelpContent;
   children: React.ReactNode;
 }) {
   return (
@@ -44,7 +48,10 @@ function Section({
           {icon}
         </div>
         <div>
-          <h3 className="text-[14px] font-semibold text-ink">{title}</h3>
+          <div className="flex items-center gap-1.5">
+            <h3 className="text-[14px] font-semibold text-ink">{title}</h3>
+            {help && <HelpPopover content={help} />}
+          </div>
           {description && <p className="text-[11px] text-faint">{description}</p>}
         </div>
       </div>
@@ -219,6 +226,7 @@ export function SettingsView() {
           icon={<Server className="size-4" />}
           title="Servidor & autenticação"
           description="Conexão svn+ssh com o repositório"
+          help={HELP.settingsAuth}
         >
           <Row label="Host SSH" hint="usuario@servidor">
             <Input
@@ -260,6 +268,7 @@ export function SettingsView() {
           icon={<Database className="size-4" />}
           title="Localizações de repositório"
           description="Raízes navegáveis no Navegador de Repositórios"
+          help={HELP.settingsLocations}
         >
           <Row label="URL base" hint="Expande nomes curtos — ex.: svn+ssh://host/usr/svn/">
             <Input
@@ -322,6 +331,7 @@ export function SettingsView() {
           icon={<Server className="size-4" />}
           title="Meus projetos"
           description="Atalhos de checkout e detecção da linha principal"
+          help={HELP.settingsProjects}
         >
           <div className="space-y-2">
             {projects.map((p, i) => (
@@ -381,7 +391,7 @@ export function SettingsView() {
         </Section>
 
         {/* Preferências */}
-        <Section icon={<Info className="size-4" />} title="Preferências">
+        <Section icon={<Info className="size-4" />} title="Preferências" help={HELP.settingsPreferences}>
           <Row label="Confirmar operações no servidor" hint="Pede confirmação antes de commit, merge, switch…">
             <Switch
               checked={config.confirmServerOps}

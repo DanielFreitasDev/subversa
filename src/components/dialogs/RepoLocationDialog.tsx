@@ -11,6 +11,7 @@ import * as api from "@/lib/api";
 import { Button } from "@/components/ui/Button";
 import { Input, Label } from "@/components/ui/Field";
 import { Modal } from "@/components/ui/Modal";
+import { HELP } from "@/lib/help";
 import { decodeUrl } from "@/lib/utils";
 import { useConfigStore } from "@/store/config";
 import { useRepoBrowserStore } from "@/store/repoBrowser";
@@ -95,6 +96,7 @@ export function RepoLocationDialog() {
       icon={<Database className="size-5" />}
       title={isEdit ? "Editar localização" : "Nova localização"}
       description="Informe o nome do repositório (sob a URL base) ou a URL completa."
+      help={HELP.repoLocation}
       footer={
         <>
           <Button variant="ghost" onClick={() => closeDialog()} disabled={busy}>

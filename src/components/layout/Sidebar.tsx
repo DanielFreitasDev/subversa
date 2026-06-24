@@ -16,9 +16,11 @@ import {
 } from "lucide-react";
 
 import { Tooltip } from "@/components/ui/Tooltip";
+import { HelpPopover } from "@/components/ui/HelpPopover";
 import { Wordmark } from "@/components/ui/Logo";
 import { useActions } from "@/hooks/useActions";
 import { useSelectedWc } from "@/hooks/useSelectedWc";
+import { HELP } from "@/lib/help";
 import { cn } from "@/lib/utils";
 import { useConfigStore } from "@/store/config";
 import { useUiStore } from "@/store/ui";
@@ -137,6 +139,7 @@ export function Sidebar() {
           Projetos
         </span>
         <div className="flex items-center gap-0.5">
+          <HelpPopover content={HELP.sidebar} />
           <Tooltip label="Trocar pasta de trabalho">
             <button
               onClick={chooseFolder}

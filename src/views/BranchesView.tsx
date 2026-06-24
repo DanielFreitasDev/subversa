@@ -16,9 +16,11 @@ import {
 import * as api from "@/lib/api";
 import { Button } from "@/components/ui/Button";
 import { Empty } from "@/components/ui/Empty";
+import { HelpPopover } from "@/components/ui/HelpPopover";
 import { Loading } from "@/components/ui/Spinner";
 import { Tooltip } from "@/components/ui/Tooltip";
 import { useActions } from "@/hooks/useActions";
+import { HELP } from "@/lib/help";
 import { useSelectedWc } from "@/hooks/useSelectedWc";
 import { extractRevision, reportOutput, tryRun } from "@/lib/op";
 import type { ListEntry, WorkingCopy } from "@/lib/types";
@@ -128,6 +130,7 @@ function Browser({ wc }: { wc: WorkingCopy }) {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <HelpPopover content={HELP.branches} />
           {!wc.isMainline && mainlineUrl && (
             <Button
               variant="outline"

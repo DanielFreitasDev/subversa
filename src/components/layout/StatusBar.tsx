@@ -3,6 +3,8 @@ import { FolderGit2, Server, GitCommitVertical } from "lucide-react";
 
 import { svnVersion } from "@/lib/api";
 import { formatRelative } from "@/lib/utils";
+import { HelpPopover } from "@/components/ui/HelpPopover";
+import { HELP } from "@/lib/help";
 import { useSelectedWc } from "@/hooks/useSelectedWc";
 import { useConfigStore } from "@/store/config";
 
@@ -19,6 +21,7 @@ export function StatusBar() {
 
   return (
     <footer className="flex h-7 shrink-0 items-center gap-4 border-t border-line bg-panel px-3 text-[11px] text-faint">
+      <HelpPopover content={HELP.statusBar} className="size-5" />
       <div className="flex items-center gap-1.5">
         <span className="size-1.5 rounded-full bg-success" />
         <span>SVN {version || "—"}</span>

@@ -7,7 +7,9 @@
 import { PanelRightClose, PanelRightOpen, Plus } from "lucide-react";
 
 import { Tooltip } from "@/components/ui/Tooltip";
+import { HelpPopover } from "@/components/ui/HelpPopover";
 import type { MenuItem } from "@/components/ui/ContextMenu";
+import { HELP } from "@/lib/help";
 import { cn } from "@/lib/utils";
 import { useRepoBrowserStore } from "@/store/repoBrowser";
 import { useRepoActions } from "./useRepoActions";
@@ -53,6 +55,7 @@ export function RepoToolbar() {
       ))}
 
       <div className="ml-auto flex items-center gap-1.5">
+        <HelpPopover content={HELP.repos} />
         {/* Recolher/expandir o painel de detalhes (só existe em telas largas). */}
         <Tooltip label={detailsCollapsed ? "Mostrar painel de detalhes" : "Ocultar painel de detalhes"}>
           <button

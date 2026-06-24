@@ -9,6 +9,7 @@ import { Input, Label } from "@/components/ui/Field";
 import { Modal } from "@/components/ui/Modal";
 import { Segmented } from "@/components/ui/Segmented";
 import { reportOutput, tryRun } from "@/lib/op";
+import { HELP } from "@/lib/help";
 import { TransferProgress } from "@/components/feedback/TransferProgress";
 import type { OpProgress } from "@/lib/types";
 import { cn, decodeUrl } from "@/lib/utils";
@@ -113,6 +114,7 @@ export function CheckoutDialog() {
       icon={<Download className="size-5" />}
       title="Baixar projeto (checkout)"
       description="Traz uma cópia de trabalho do servidor para a sua pasta."
+      help={HELP.checkout}
       footer={
         <>
           <Button variant="ghost" onClick={() => setOpen(false)} disabled={busy}>

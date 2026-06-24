@@ -12,8 +12,10 @@ import { ArrowDownToLine, FolderOpen, Search, Terminal, Trash2 } from "lucide-re
 import * as api from "@/lib/api";
 import { Button, IconButton } from "@/components/ui/Button";
 import { Empty } from "@/components/ui/Empty";
+import { HelpPopover } from "@/components/ui/HelpPopover";
 import { Input } from "@/components/ui/Field";
 import { ViewHeader } from "@/views/_shared";
+import { HELP } from "@/lib/help";
 import type { CommandLogEntry } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -115,6 +117,7 @@ export function CommandLogView() {
           title="Registro"
           subtitle={`${entries.length} comando${entries.length === 1 ? "" : "s"} svn nesta sessão`}
         >
+          <HelpPopover content={HELP.commandLog} />
           <div className="relative">
             <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-faint" />
             <Input
