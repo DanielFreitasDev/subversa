@@ -54,6 +54,10 @@ interface RepoBrowserState {
   expanded: Set<string>;
   /** Diálogo aberto (ou `null`). */
   dialog: RepoDialog | null;
+  /** Painel de detalhes recolhido? (persistido) */
+  detailsCollapsed: boolean;
+  /** Largura do painel de detalhes em px (persistida). */
+  detailsWidth: number;
 
   setActiveLocation: (url: string | null) => void;
   select: (node: RepoNode | null) => void;
@@ -63,11 +67,44 @@ interface RepoBrowserState {
   refreshAll: () => Promise<void>;
   openDialog: (kind: RepoDialogKind, node: RepoNode | null) => void;
   closeDialog: () => void;
+  toggleDetails: () => void;
+  /** Atualiza a largura do painel; `commit` persiste (use ao fim do arraste). */
+  setDetailsWidth: (width: number, commit?: boolean) => void;
 }
 
 /** Normaliza o `kind` cru do `svn list` para o nosso união. */
 function nodeKind(kind: string): "dir" | "file" {
   return kind === "dir" ? "dir" : "file";
+}
+
+// Persistência (localStorage) do painel de detalhes: recolhido + largura.
+const DETAILS_WIDTH_KEY = "subversa.repos.detailsWidth";
+const DETAILS_COLLAPSED_KEY = "subversa.repos.detailsCollapsed";
+/** Largura padrão do painel de detalhes (px). */
+export const DETAILS_WIDTH_DEFAULT = 420;
+const DETAILS_WIDTH_MIN = 280;
+const DETAILS_WIDTH_MAX = 640;
+
+/** Mantém a largura do painel dentro de limites sãos (não deixa a árvore sumir). */
+function clampDetailsWidth(w: number): number {
+  return Math.min(DETAILS_WIDTH_MAX, Math.max(DETAILS_WIDTH_MIN, Math.round(w)));
+}
+
+function initialDetailsWidth(): number {
+  try {
+    const v = Number(localStorage.getItem(DETAILS_WIDTH_KEY));
+    return v > 0 ? clampDetailsWidth(v) : DETAILS_WIDTH_DEFAULT;
+  } catch {
+    return DETAILS_WIDTH_DEFAULT; // storage indisponível (modo privativo/quota)
+  }
+}
+
+function initialDetailsCollapsed(): boolean {
+  try {
+    return localStorage.getItem(DETAILS_COLLAPSED_KEY) === "1";
+  } catch {
+    return false;
+  }
 }
 
 export const useRepoBrowserStore = create<RepoBrowserState>((set, get) => ({
@@ -78,6 +115,8 @@ export const useRepoBrowserStore = create<RepoBrowserState>((set, get) => ({
   errors: new Map(),
   expanded: new Set(),
   dialog: null,
+  detailsCollapsed: initialDetailsCollapsed(),
+  detailsWidth: initialDetailsWidth(),
 
   setActiveLocation: (url) => {
     set({
@@ -145,6 +184,28 @@ export const useRepoBrowserStore = create<RepoBrowserState>((set, get) => ({
 
   openDialog: (kind, node) => set({ dialog: { kind, node } }),
   closeDialog: () => set({ dialog: null }),
+
+  toggleDetails: () => {
+    const detailsCollapsed = !get().detailsCollapsed;
+    try {
+      localStorage.setItem(DETAILS_COLLAPSED_KEY, detailsCollapsed ? "1" : "0");
+    } catch {
+      /* storage indisponível — ignora a persistência */
+    }
+    set({ detailsCollapsed });
+  },
+
+  setDetailsWidth: (width, commit = false) => {
+    const detailsWidth = clampDetailsWidth(width);
+    if (commit) {
+      try {
+        localStorage.setItem(DETAILS_WIDTH_KEY, String(detailsWidth));
+      } catch {
+        /* storage indisponível — ignora a persistência */
+      }
+    }
+    set({ detailsWidth });
+  },
 }));
 
 export { nodeKind };

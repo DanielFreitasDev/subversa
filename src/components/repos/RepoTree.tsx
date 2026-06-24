@@ -96,12 +96,15 @@ function NodeRow({
         ) : (
           <FileIcon className="size-4 shrink-0 text-faint" />
         )}
-        <span className="truncate text-[13px] text-ink">{decodeUrlSafe(entry.name)}</span>
+        <span className="truncate text-[13px] text-ink" title={decodeUrlSafe(entry.name)}>
+          {decodeUrlSafe(entry.name)}
+        </span>
         {entry.revision && (
           <span className="shrink-0 font-mono text-[10px] text-faint">r{entry.revision}</span>
         )}
         {entry.author && (
-          <span className="ml-auto hidden shrink-0 text-[11px] text-faint group-hover:inline md:inline">
+          // Some por padrão para o nome usar a largura inteira; reaparece no hover.
+          <span className="ml-auto hidden shrink-0 text-[11px] text-faint group-hover:inline">
             {entry.author} · {formatRelative(entry.date)}
           </span>
         )}

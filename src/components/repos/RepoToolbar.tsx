@@ -4,7 +4,7 @@
  * tooltip. Mais Refresh global (na breadcrumb/atalho) e "Nova localização".
  */
 
-import { Plus } from "lucide-react";
+import { PanelRightClose, PanelRightOpen, Plus } from "lucide-react";
 
 import { Tooltip } from "@/components/ui/Tooltip";
 import type { MenuItem } from "@/components/ui/ContextMenu";
@@ -38,6 +38,8 @@ function ToolbarButton({ item }: { item: MenuItem }) {
 export function RepoToolbar() {
   const selected = useRepoBrowserStore((s) => s.selected);
   const openDialog = useRepoBrowserStore((s) => s.openDialog);
+  const detailsCollapsed = useRepoBrowserStore((s) => s.detailsCollapsed);
+  const toggleDetails = useRepoBrowserStore((s) => s.toggleDetails);
   const actionsFor = useRepoActions();
   const items = actionsFor(selected);
 
@@ -50,7 +52,17 @@ export function RepoToolbar() {
         </div>
       ))}
 
-      <div className="ml-auto">
+      <div className="ml-auto flex items-center gap-1.5">
+        {/* Recolher/expandir o painel de detalhes (só existe em telas largas). */}
+        <Tooltip label={detailsCollapsed ? "Mostrar painel de detalhes" : "Ocultar painel de detalhes"}>
+          <button
+            onClick={toggleDetails}
+            aria-pressed={!detailsCollapsed}
+            className="hidden size-8 items-center justify-center rounded-md text-muted transition-colors hover:bg-panel-2 hover:text-ink lg:flex"
+          >
+            {detailsCollapsed ? <PanelRightOpen className="size-4" /> : <PanelRightClose className="size-4" />}
+          </button>
+        </Tooltip>
         <Tooltip label="Nova localização">
           <button
             onClick={() => openDialog("location", null)}

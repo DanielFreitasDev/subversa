@@ -22,7 +22,7 @@ import type { UrlInfo } from "@/lib/types";
 import { decodeUrl, formatAbsolute, formatRelative } from "@/lib/utils";
 import { useConfigStore } from "@/store/config";
 import { useConfirmStore } from "@/store/confirm";
-import { useRepoBrowserStore, type RepoNode } from "@/store/repoBrowser";
+import { DETAILS_WIDTH_DEFAULT, useRepoBrowserStore, type RepoNode } from "@/store/repoBrowser";
 import { useUiStore } from "@/store/ui";
 
 function NodeDetails({ node }: { node: RepoNode }) {
@@ -91,10 +91,64 @@ function NodeDetails({ node }: { node: RepoNode }) {
   );
 }
 
+/**
+ * Divisória arrastável entre a árvore e o painel de detalhes. Arrastar para a
+ * esquerda alarga o painel (ele fica à direita); duplo-clique reseta a largura.
+ * Também é focável e ajustável pelas setas (←/→) para acessibilidade.
+ */
+function ResizeHandle() {
+  const width = useRepoBrowserStore((s) => s.detailsWidth);
+  const setWidth = useRepoBrowserStore((s) => s.setDetailsWidth);
+
+  const onMouseDown = (e: React.MouseEvent) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startW = width;
+    const move = (ev: MouseEvent) => setWidth(startW + (startX - ev.clientX));
+    const up = (ev: MouseEvent) => {
+      window.removeEventListener("mousemove", move);
+      window.removeEventListener("mouseup", up);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      setWidth(startW + (startX - ev.clientX), true); // persiste a largura final
+    };
+    window.addEventListener("mousemove", move);
+    window.addEventListener("mouseup", up);
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+  };
+
+  const onKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "ArrowLeft") {
+      e.preventDefault();
+      setWidth(width + 16, true);
+    } else if (e.key === "ArrowRight") {
+      e.preventDefault();
+      setWidth(width - 16, true);
+    }
+  };
+
+  return (
+    <div
+      role="separator"
+      aria-orientation="vertical"
+      aria-label="Redimensionar painel de detalhes"
+      tabIndex={0}
+      title="Arraste para redimensionar · duplo-clique para resetar"
+      onMouseDown={onMouseDown}
+      onDoubleClick={() => setWidth(DETAILS_WIDTH_DEFAULT, true)}
+      onKeyDown={onKeyDown}
+      className="hidden w-1.5 shrink-0 cursor-col-resize bg-transparent transition-colors hover:bg-info/40 focus-visible:bg-info/40 focus:outline-none lg:block"
+    />
+  );
+}
+
 export function ReposView() {
   const roots = useConfigStore((s) => s.config?.repoRoots ?? []);
   const activeLocation = useRepoBrowserStore((s) => s.activeLocation);
   const selected = useRepoBrowserStore((s) => s.selected);
+  const detailsCollapsed = useRepoBrowserStore((s) => s.detailsCollapsed);
+  const detailsWidth = useRepoBrowserStore((s) => s.detailsWidth);
   const setActiveLocation = useRepoBrowserStore((s) => s.setActiveLocation);
   const refreshAll = useRepoBrowserStore((s) => s.refreshAll);
   const openDialog = useRepoBrowserStore((s) => s.openDialog);
@@ -144,17 +198,25 @@ export function ReposView() {
         <RepoBreadcrumb />
         <div className="flex min-h-0 flex-1">
           <RepoTree onContext={onContext} />
-          <div className="hidden w-[420px] shrink-0 border-l border-line lg:block">
-            {selected ? (
-              selected.kind === "file" ? (
-                <FilePreview key={selected.url} node={selected} />
-              ) : (
-                <NodeDetails key={selected.url} node={selected} />
-              )
-            ) : (
-              <Empty icon={<FolderTree className="size-7" />} title="Nada selecionado" />
-            )}
-          </div>
+          {!detailsCollapsed && (
+            <>
+              <ResizeHandle />
+              <div
+                className="hidden shrink-0 border-l border-line lg:block"
+                style={{ width: detailsWidth }}
+              >
+                {selected ? (
+                  selected.kind === "file" ? (
+                    <FilePreview key={selected.url} node={selected} />
+                  ) : (
+                    <NodeDetails key={selected.url} node={selected} />
+                  )
+                ) : (
+                  <Empty icon={<FolderTree className="size-7" />} title="Nada selecionado" />
+                )}
+              </div>
+            </>
+          )}
         </div>
       </div>
 
