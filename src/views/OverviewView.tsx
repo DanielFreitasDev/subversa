@@ -181,7 +181,7 @@ export function OverviewView() {
           <div>
             <h1 className="text-lg font-semibold text-ink">Visão geral</h1>
             <p className="truncate text-[12px] text-faint" title={baseDir}>
-              {baseDir}
+              {baseDir || "Nenhuma pasta de trabalho aberta"}
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -223,8 +223,12 @@ export function OverviewView() {
         ) : workingCopies.length === 0 ? (
           <Empty
             icon={<FolderGit2 className="size-7" />}
-            title="Nenhuma working copy aqui"
-            description="Troque a pasta de trabalho na barra lateral ou baixe um dos seus projetos."
+            title={baseDir ? "Nenhuma working copy aqui" : "Nenhuma pasta de trabalho aberta"}
+            description={
+              baseDir
+                ? "Troque a pasta de trabalho na barra lateral ou baixe um dos seus projetos."
+                : "Escolha uma pasta de trabalho na barra lateral ou baixe um dos seus projetos."
+            }
             action={
               <Button variant="primary" onClick={() => setCheckout(true)}>
                 <Download className="size-4" /> Baixar projeto

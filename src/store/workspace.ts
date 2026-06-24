@@ -17,6 +17,7 @@ interface WorkspaceState {
   refreshOne: (path: string) => Promise<void>;
   select: (path: string | null) => void;
   selected: () => WorkingCopy | null;
+  closeFolder: () => void;
 }
 
 // Época de detecção: refreshes concorrentes (boot, troca de pasta, botões)
@@ -81,5 +82,19 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   selected: () => {
     const { workingCopies, selectedPath } = get();
     return workingCopies.find((w) => w.path === selectedPath) ?? null;
+  },
+
+  // Sai da pasta de trabalho: volta ao estado "sem pasta" (igual à primeira
+  // execução). Incrementa a época para invalidar qualquer detecção em
+  // andamento, evitando que um refresh tardio repovoe a lista.
+  closeFolder: () => {
+    refreshEpoch++;
+    set({
+      baseDir: "",
+      workingCopies: [],
+      selectedPath: null,
+      loading: false,
+      error: null,
+    });
   },
 }));

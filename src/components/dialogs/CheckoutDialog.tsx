@@ -54,7 +54,12 @@ export function CheckoutDialog() {
   const url = mode === "preset" ? projects.find((p) => p.key === presetKey)?.url ?? "" : customUrl.trim();
   const dest = `${baseDir.replace(/\/$/, "")}/${name.trim()}`;
   const isDownloaded = (key: string) => workingCopies.some((w) => w.name === key);
-  const canSubmit = useMemo(() => !!url && !!name.trim() && !busy, [url, name, busy]);
+  // Sem pasta de trabalho (ex.: após fechá-la) é preciso escolher o destino
+  // primeiro — senão o checkout iria para "/nome" na raiz.
+  const canSubmit = useMemo(
+    () => !!url && !!name.trim() && !!baseDir && !busy,
+    [url, name, baseDir, busy],
+  );
 
   // Deixa o usuário navegar pelo sistema e escolher onde baixar. A pasta
   // escolhida vira a pasta de trabalho (igual ao seletor da barra lateral),

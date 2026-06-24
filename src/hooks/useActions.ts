@@ -66,6 +66,16 @@ export function useActions() {
     [refreshOne],
   );
 
+  /** Sai da pasta de trabalho: limpa o estado e esquece a pasta no config. */
+  const closeFolder = useCallback(async () => {
+    useWorkspaceStore.getState().closeFolder();
+    await useConfigStore.getState().save({ baseDir: "" });
+    toast.info(
+      "Pasta de trabalho fechada",
+      "Escolha uma pasta ou baixe um projeto para começar.",
+    );
+  }, []);
+
   /** Troca a working copy para outra URL (svn switch). */
   const switchTo = useCallback(
     async (wc: WorkingCopy, url: string, label?: string) => {
@@ -87,5 +97,5 @@ export function useActions() {
     [refreshOne, confirmServerOps],
   );
 
-  return { update, cleanup, revertAll, switchTo };
+  return { update, cleanup, revertAll, switchTo, closeFolder };
 }

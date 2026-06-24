@@ -7,6 +7,7 @@ import {
   Download,
   FileDiff,
   FolderOpen,
+  FolderX,
   GitBranch,
   GitMerge,
   History,
@@ -50,9 +51,10 @@ export function CommandPalette() {
   const setCreateBranch = useUiStore((s) => s.setCreateBranch);
   const wc = useSelectedWc();
   const refresh = useWorkspaceStore((s) => s.refresh);
+  const baseDir = useWorkspaceStore((s) => s.baseDir);
   const projects = useConfigStore((s) => s.config?.projects ?? []);
   const openRepoDialog = useRepoBrowserStore((s) => s.openDialog);
-  const { update, cleanup, revertAll, switchTo } = useActions();
+  const { update, cleanup, revertAll, switchTo, closeFolder } = useActions();
 
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
@@ -116,6 +118,18 @@ export function CommandPalette() {
         section: "Repositório",
         run: close(() => refresh()),
       },
+      ...(baseDir
+        ? [
+            {
+              id: "close-folder",
+              title: "Fechar pasta de trabalho",
+              icon: <FolderX className="size-4" />,
+              keywords: "sair fechar limpar pasta trabalho sem nenhuma vazia",
+              section: "Repositório",
+              run: close(() => closeFolder()),
+            },
+          ]
+        : []),
       {
         id: "settings",
         title: "Abrir configurações",
@@ -225,7 +239,7 @@ export function CommandPalette() {
     }
 
     return list;
-  }, [wc, projects, setPalette, setView, setCheckout, setCreateBranch, openRepoDialog, refresh, update, cleanup, revertAll, switchTo]);
+  }, [wc, baseDir, projects, setPalette, setView, setCheckout, setCreateBranch, openRepoDialog, refresh, update, cleanup, revertAll, switchTo, closeFolder]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();

@@ -4,6 +4,7 @@ import {
   Database,
   Download,
   FolderOpen,
+  FolderX,
   GitBranch,
   LayoutDashboard,
   Moon,
@@ -16,6 +17,7 @@ import {
 
 import { Tooltip } from "@/components/ui/Tooltip";
 import { Wordmark } from "@/components/ui/Logo";
+import { useActions } from "@/hooks/useActions";
 import { useSelectedWc } from "@/hooks/useSelectedWc";
 import { cn } from "@/lib/utils";
 import { useConfigStore } from "@/store/config";
@@ -72,6 +74,7 @@ export function Sidebar() {
   const { view, setView, setCheckout } = useUiStore();
   const config = useConfigStore((s) => s.config);
   const saveConfig = useConfigStore((s) => s.save);
+  const { closeFolder } = useActions();
 
   const folderName = baseDir.split("/").filter(Boolean).pop() ?? baseDir;
   const isLight = document.documentElement.classList.contains("theme-light");
@@ -142,6 +145,16 @@ export function Sidebar() {
               <FolderOpen className="size-3.5" />
             </button>
           </Tooltip>
+          {baseDir && (
+            <Tooltip label="Fechar pasta de trabalho">
+              <button
+                onClick={closeFolder}
+                className="flex size-6 items-center justify-center rounded-md text-faint transition-colors hover:bg-panel-2 hover:text-ink"
+              >
+                <FolderX className="size-3.5" />
+              </button>
+            </Tooltip>
+          )}
           <Tooltip label="Recarregar working copies">
             <button
               onClick={() => refresh()}
