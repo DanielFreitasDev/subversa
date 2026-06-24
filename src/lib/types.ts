@@ -15,6 +15,31 @@ export interface CommandOutput {
   command: string;
 }
 
+/**
+ * Operações de transferência cujo progresso é transmitido pelo evento
+ * `op-progress`. Commit/import ficam de fora: imprimem o progresso em português
+ * e contá-los exigiria parsear texto traduzido (contra a convenção do projeto).
+ */
+export type TransferOp = "checkout" | "update" | "switch" | "merge" | "export";
+
+/**
+ * Progresso de uma operação de transferência em andamento (evento `op-progress`).
+ * SVN não informa o total de arquivos de antemão, então a UI mostra contador +
+ * caminho atual em vez de porcentagem.
+ */
+export interface OpProgress {
+  /** Identificador único desta execução (distingue operações simultâneas). */
+  id: number;
+  /** Qual operação está em andamento. */
+  op: TransferOp;
+  /** Quantos arquivos/diretórios já foram processados. */
+  count: number;
+  /** Caminho mais recente processado (vazio no início e no evento final). */
+  path: string;
+  /** `true` no evento final (sucesso ou erro) — a UI usa para remover o cartão. */
+  done: boolean;
+}
+
 /** Uma entrada do registro de comandos (auditoria do que o app rodou no `svn`). */
 export interface CommandLogEntry {
   /** Sequência monotônica desde o início da sessão (id estável). */

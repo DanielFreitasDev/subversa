@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
+import { listen } from "@tauri-apps/api/event";
 import { Check, Download, FolderDown, FolderOpen, Link2 } from "lucide-react";
 
 import * as api from "@/lib/api";
@@ -8,6 +9,8 @@ import { Input, Label } from "@/components/ui/Field";
 import { Modal } from "@/components/ui/Modal";
 import { Segmented } from "@/components/ui/Segmented";
 import { reportOutput, tryRun } from "@/lib/op";
+import { TransferProgress } from "@/components/feedback/TransferProgress";
+import type { OpProgress } from "@/lib/types";
 import { cn, decodeUrl } from "@/lib/utils";
 import { useConfigStore } from "@/store/config";
 import { useUiStore } from "@/store/ui";
@@ -27,9 +30,11 @@ export function CheckoutDialog() {
   const [customUrl, setCustomUrl] = useState("");
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
+  const [progress, setProgress] = useState<OpProgress | null>(null);
 
   useEffect(() => {
     if (open) {
+      setProgress(null);
       if (checkoutUrl) {
         // Veio do navegador de repositórios: pré-preenche modo "Outra URL".
         const decoded = decodeUrl(checkoutUrl);
@@ -66,8 +71,17 @@ export function CheckoutDialog() {
   const doCheckout = async () => {
     if (!canSubmit) return;
     setBusy(true);
+    // Mostra a barra imediatamente; o backend emite `op-progress` por arquivo
+    // baixado (sem total conhecido — contador + caminho atual). Filtra pela
+    // operação de checkout e ignora o evento final `done` (limpamos ao resolver).
+    setProgress({ id: -1, op: "checkout", count: 0, path: "", done: false });
+    const unlisten = await listen<OpProgress>("op-progress", (e) => {
+      if (e.payload.op === "checkout" && !e.payload.done) setProgress(e.payload);
+    });
     const out = await tryRun(() => api.checkout(url, dest), "Falha no checkout");
+    unlisten();
     setBusy(false);
+    setProgress(null);
     if (out && reportOutput(out, "Projeto baixado", name)) {
       setOpen(false);
       await refresh();
@@ -101,7 +115,7 @@ export function CheckoutDialog() {
           </Button>
           <Button variant="primary" onClick={doCheckout} loading={busy} disabled={!canSubmit}>
             {!busy && <FolderDown className="size-4" />}
-            Baixar
+            {busy ? "Baixando…" : "Baixar"}
           </Button>
         </>
       }
@@ -203,17 +217,27 @@ export function CheckoutDialog() {
           />
         </Label>
       </div>
-      {url && (
-        <div className="mt-3 space-y-1 rounded-lg bg-panel-2 px-3 py-2 text-[11px]">
-          <div className="flex gap-2">
-            <span className="w-12 shrink-0 text-faint">origem</span>
-            <span className="truncate font-mono text-muted">{decodeUrl(url)}</span>
+      {busy && progress ? (
+        <TransferProgress
+          label="Baixando"
+          count={progress.count}
+          path={progress.path}
+          base={dest}
+          className="mt-4 rounded-lg border border-line bg-panel-2 px-3 py-3"
+        />
+      ) : (
+        url && (
+          <div className="mt-3 space-y-1 rounded-lg bg-panel-2 px-3 py-2 text-[11px]">
+            <div className="flex gap-2">
+              <span className="w-12 shrink-0 text-faint">origem</span>
+              <span className="truncate font-mono text-muted">{decodeUrl(url)}</span>
+            </div>
+            <div className="flex gap-2">
+              <span className="w-12 shrink-0 text-faint">destino</span>
+              <span className="truncate font-mono text-muted">{dest}</span>
+            </div>
           </div>
-          <div className="flex gap-2">
-            <span className="w-12 shrink-0 text-faint">destino</span>
-            <span className="truncate font-mono text-muted">{dest}</span>
-          </div>
-        </div>
+        )
       )}
     </Modal>
   );

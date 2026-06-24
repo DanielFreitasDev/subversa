@@ -4,7 +4,7 @@ use std::path::Path;
 use std::process::Stdio;
 use std::time::{Duration, Instant};
 
-use tokio::io::{AsyncRead, AsyncReadExt};
+use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncReadExt, BufReader};
 use tokio::process::Command;
 use tokio::time::timeout;
 
@@ -204,8 +204,19 @@ async fn run_inner(
         .await
         .map_err(|e| format!("falha ao aguardar o svn: {e}"))?;
 
-    let stdout = String::from_utf8_lossy(&stdout).to_string();
-    let stderr = String::from_utf8_lossy(&stderr).to_string();
+    Ok(build_output(args, status, &stdout, &stderr))
+}
+
+/// Monta o [`CommandOutput`] final a partir do status e das saídas brutas.
+/// A dica amigável só é derivada quando o comando falhou.
+fn build_output(
+    args: &[&str],
+    status: std::process::ExitStatus,
+    stdout: &[u8],
+    stderr: &[u8],
+) -> CommandOutput {
+    let stdout = String::from_utf8_lossy(stdout).to_string();
+    let stderr = String::from_utf8_lossy(stderr).to_string();
     let success = status.success();
     let hint = if success {
         None
@@ -213,14 +224,127 @@ async fn run_inner(
         hint_from_stderr(&stderr)
     };
 
-    Ok(CommandOutput {
+    CommandOutput {
         success,
         code: status.code(),
         stdout,
         stderr,
         hint,
         command: display_command(args),
-    })
+    }
+}
+
+/// Igual a [`run_limited`], mas transmite o stdout linha a linha: chama
+/// `on_line` para cada linha conforme o `svn` a imprime (ex.: cada arquivo que
+/// o checkout adiciona). O stdout completo ainda é acumulado e devolvido no
+/// [`CommandOutput`] final, então o chamador não perde nada.
+pub async fn run_with_progress<F>(
+    args: &[&str],
+    cwd: Option<&Path>,
+    mode: SshMode,
+    limit: OutputLimit,
+    mut on_line: F,
+) -> Result<CommandOutput, String>
+where
+    F: FnMut(&str),
+{
+    // Mesmo funil de telemetria do `run_limited`.
+    let started = Instant::now();
+    let result = run_with_progress_inner(args, cwd, mode, limit, &mut on_line).await;
+    let (success, code) = match &result {
+        Ok(out) => (out.success, out.code),
+        Err(_) => (false, None),
+    };
+    audit::record(&display_command(args), success, code, started.elapsed());
+    result
+}
+
+async fn run_with_progress_inner<F>(
+    args: &[&str],
+    cwd: Option<&Path>,
+    mode: SshMode,
+    limit: OutputLimit,
+    on_line: &mut F,
+) -> Result<CommandOutput, String>
+where
+    F: FnMut(&str),
+{
+    let mut cmd = Command::new("svn");
+    cmd.args(args);
+    if let Some(dir) = cwd {
+        cmd.current_dir(dir);
+    }
+    cmd.env("SVN_SSH", conn::svn_ssh_value(mode));
+
+    cmd.kill_on_drop(true);
+    cmd.stdout(Stdio::piped());
+    cmd.stderr(Stdio::piped());
+
+    let mut child = cmd
+        .spawn()
+        .map_err(|e| format!("não consegui executar o svn: {e}. O Subversion está instalado?"))?;
+
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| "não consegui capturar stdout do svn".to_string())?;
+    let stderr = child
+        .stderr
+        .take()
+        .ok_or_else(|| "não consegui capturar stderr do svn".to_string())?;
+
+    let read_streams = async {
+        // stderr é pequeno e não precisa de streaming: lê em paralelo, sem bloquear.
+        let stderr_task = tokio::spawn(read_limited(stderr, limit, "stderr"));
+
+        // stdout: lê linha a linha, repassa cada uma a `on_line` e acumula tudo
+        // (mantendo o mesmo teto de bytes do `read_limited`).
+        let mut reader = BufReader::new(stdout);
+        let mut full: Vec<u8> = Vec::new();
+        let mut line: Vec<u8> = Vec::new();
+        loop {
+            line.clear();
+            let n = reader
+                .read_until(b'\n', &mut line)
+                .await
+                .map_err(|e| format!("falha ao ler stdout do svn: {e}"))?;
+            if n == 0 {
+                break;
+            }
+            if full.len().saturating_add(n) > limit.bytes {
+                return Err(output_limit_error(limit, "stdout"));
+            }
+            full.extend_from_slice(&line);
+            on_line(String::from_utf8_lossy(&line).trim_end_matches(['\r', '\n']));
+        }
+
+        let stderr = join_reader(stderr_task.await, "stderr").await?;
+        Ok::<(Vec<u8>, Vec<u8>), String>((full, stderr))
+    };
+
+    let (stdout, stderr) = match timeout(SVN_TIMEOUT, read_streams).await {
+        Ok(Ok(streams)) => streams,
+        Ok(Err(e)) => {
+            let _ = child.kill().await;
+            let _ = child.wait().await;
+            return Err(e);
+        }
+        Err(_) => {
+            let _ = child.kill().await;
+            let _ = child.wait().await;
+            return Err(
+                "a operação do svn excedeu o tempo limite (30 min). Verifique a rede/VPN e o acesso SSH ao servidor."
+                    .into(),
+            );
+        }
+    };
+
+    let status = child
+        .wait()
+        .await
+        .map_err(|e| format!("falha ao aguardar o svn: {e}"))?;
+
+    Ok(build_output(args, status, &stdout, &stderr))
 }
 
 /// Igual a [`run`], mas falha (Err) quando o `svn` retorna código != 0,

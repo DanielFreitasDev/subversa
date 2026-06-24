@@ -49,6 +49,26 @@ pub struct CommandLogEntry {
     pub duration_ms: u64,
 }
 
+/// Progresso de uma operação de transferência em andamento (checkout, update,
+/// switch, merge, export), emitido via evento `op-progress` conforme o `svn`
+/// processa cada arquivo. Não há total conhecido de antemão (o servidor não
+/// informa a contagem), então a UI mostra contador + caminho atual em vez de
+/// porcentagem.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OpProgress {
+    /// Identificador único desta execução (distingue operações simultâneas).
+    pub id: u64,
+    /// Qual operação: `"checkout"`, `"update"`, `"switch"`, `"merge"`, `"export"`.
+    pub op: String,
+    /// Quantos arquivos/diretórios já foram processados até agora.
+    pub count: u64,
+    /// Caminho mais recente processado (vazio no início e no evento final).
+    pub path: String,
+    /// `true` no evento final (sucesso ou erro) — a UI usa para remover o cartão.
+    pub done: bool,
+}
+
 /// Disponibilidade dos binários externos exigidos em tempo de execução.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]

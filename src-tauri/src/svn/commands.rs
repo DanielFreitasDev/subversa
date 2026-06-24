@@ -5,13 +5,16 @@
 //! dica), para que a UI possa mostrar o resultado mesmo em caso de erro.
 
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::{Duration, Instant};
 
-use tauri::State;
+use tauri::{AppHandle, Emitter, State};
 use url::Url;
 
 use super::parser;
 use super::runner::{
-    run, run_checked, run_checked_limited, run_limited, LIMIT_BLAME, LIMIT_CAT_FILE, LIMIT_DEFAULT,
+    run, run_checked, run_checked_limited, run_limited, run_with_progress, LIMIT_BLAME,
+    LIMIT_CAT_FILE, LIMIT_DEFAULT,
 };
 use super::types::*;
 use crate::config;
@@ -629,29 +632,134 @@ pub async fn diff_urls(
 // Operações que escrevem (servidor ou WC)
 // ---------------------------------------------------------------------------
 
+/// Nome do evento de progresso emitido durante operações de transferência.
+const OP_PROGRESS_EVENT: &str = "op-progress";
+
+/// Intervalo mínimo entre eventos de progresso: uma operação grande imprime
+/// milhares de linhas em rajada — sem isso, inundaríamos o IPC com a UI.
+const PROGRESS_INTERVAL: Duration = Duration::from_millis(60);
+
+/// Contador monotônico de execuções, para dar um `id` único a cada operação
+/// (a UI distingue cartões de operações simultâneas por ele).
+static OP_SEQ: AtomicU64 = AtomicU64::new(0);
+
+fn next_op_id() -> u64 {
+    OP_SEQ.fetch_add(1, Ordering::Relaxed)
+}
+
+/// Extrai o caminho de uma linha de progresso do `svn` (`"A    caminho"`): o
+/// primeiro caractere é um código de ação e o segundo é espaço. Vale para
+/// checkout/update/switch/merge/export, que usam esse formato de coluna
+/// independente de idioma. Distingue de linhas como "Checked out revision N."/
+/// "Obtida a revisão N." (segundo caractere é letra), que não contam como
+/// arquivo. (Commit/import usam verbos traduzidos e ficam de fora de propósito.)
+fn progress_path(line: &str) -> Option<&str> {
+    let mut chars = line.chars();
+    let code = chars.next()?;
+    if !matches!(code, 'A' | 'D' | 'U' | 'C' | 'G' | 'E' | 'R') || chars.next()? != ' ' {
+        return None;
+    }
+    let path = line[1..].trim();
+    (!path.is_empty()).then_some(path)
+}
+
+/// Roda um comando `svn` transmitindo o progresso por arquivo via `op-progress`.
+/// Emite um evento inicial (a UI aparece já), eventos intermediários com
+/// throttle, e um evento final `done` (mesmo em erro, para a UI fechar o
+/// cartão). O `CommandOutput` completo é devolvido normalmente.
+async fn run_streaming_op(
+    app: &AppHandle,
+    op: &str,
+    args: &[&str],
+    cwd: Option<&Path>,
+    mode: SshMode,
+) -> Result<CommandOutput, String> {
+    let id = next_op_id();
+    // Evento inicial: a UI mostra "<operação>…" antes mesmo do primeiro arquivo.
+    let _ = app.emit(
+        OP_PROGRESS_EVENT,
+        OpProgress {
+            id,
+            op: op.to_string(),
+            count: 0,
+            path: String::new(),
+            done: false,
+        },
+    );
+
+    let emitter = app.clone();
+    let op_label = op.to_string();
+    let mut count: u64 = 0;
+    let mut last_emit = Instant::now();
+    let on_line = |line: &str| {
+        let Some(path) = progress_path(line) else {
+            return;
+        };
+        count += 1;
+        let now = Instant::now();
+        if now.duration_since(last_emit) >= PROGRESS_INTERVAL {
+            last_emit = now;
+            let _ = emitter.emit(
+                OP_PROGRESS_EVENT,
+                OpProgress {
+                    id,
+                    op: op_label.clone(),
+                    count,
+                    path: path.to_string(),
+                    done: false,
+                },
+            );
+        }
+    };
+
+    let out = run_with_progress(args, cwd, mode, LIMIT_DEFAULT, on_line).await;
+
+    // Evento final com o total exato (o throttle pode ter omitido a última
+    // rajada). Emitido também em erro, para a UI remover o cartão.
+    let _ = app.emit(
+        OP_PROGRESS_EVENT,
+        OpProgress {
+            id,
+            op: op.to_string(),
+            count,
+            path: String::new(),
+            done: true,
+        },
+    );
+    out
+}
+
 #[tauri::command]
 pub async fn checkout(
     url: String,
     dest: String,
+    app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<CommandOutput, String> {
     let (mode, cfg) = config_snapshot(&state);
     validate_remote_url_for_read(&url, &cfg)?;
     let dest = validate_local_path(&dest, &cfg, "destino do checkout", true, false)?;
     let dest = dest.to_string_lossy().to_string();
-    run_limited(
+    run_streaming_op(
+        &app,
+        "checkout",
         &["checkout", "--non-interactive", "--", &url, &dest],
         None,
         mode,
-        LIMIT_DEFAULT,
     )
     .await
 }
 
 #[tauri::command]
-pub async fn update(path: String, state: State<'_, AppState>) -> Result<CommandOutput, String> {
+pub async fn update(
+    path: String,
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<CommandOutput, String> {
     let mode = mode_of(&state);
-    run(
+    run_streaming_op(
+        &app,
+        "update",
         &[
             "update",
             "--non-interactive",
@@ -778,12 +886,15 @@ pub async fn create_branch(
 pub async fn switch_wc(
     path: String,
     url: String,
+    app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<CommandOutput, String> {
     let (mode, cfg) = config_snapshot(&state);
     validate_remote_url_for_read(&url, &cfg)?;
     validate_local_path(&path, &cfg, "working copy", true, false)?;
-    run_limited(
+    run_streaming_op(
+        &app,
+        "switch",
         &[
             "switch",
             "--non-interactive",
@@ -795,7 +906,6 @@ pub async fn switch_wc(
         ],
         None,
         mode,
-        LIMIT_DEFAULT,
     )
     .await
 }
@@ -806,6 +916,7 @@ pub async fn merge(
     source_url: String,
     dry_run: bool,
     record_only: bool,
+    app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<CommandOutput, String> {
     let (mode, cfg) = config_snapshot(&state);
@@ -827,7 +938,7 @@ pub async fn merge(
     args.push(source_url);
     args.push(path);
     let refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-    run_limited(&refs, None, mode, LIMIT_DEFAULT).await
+    run_streaming_op(&app, "merge", &refs, None, mode).await
 }
 
 #[tauri::command]
@@ -874,6 +985,7 @@ pub async fn export_path(
     dest: String,
     force: bool,
     revision: Option<String>,
+    app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<CommandOutput, String> {
     let (mode, cfg) = config_snapshot(&state);
@@ -892,7 +1004,7 @@ pub async fn export_path(
     args.push(url);
     args.push(dest);
     let refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-    run_limited(&refs, None, mode, LIMIT_DEFAULT).await
+    run_streaming_op(&app, "export", &refs, None, mode).await
 }
 
 /// Importa uma pasta local para uma URL do repositório (`svn import`).

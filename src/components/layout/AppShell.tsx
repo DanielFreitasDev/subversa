@@ -4,6 +4,7 @@ import { CommandPalette } from "@/components/layout/CommandPalette";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { StatusBar } from "@/components/layout/StatusBar";
 import { TopBar } from "@/components/layout/TopBar";
+import { ActivityPanel } from "@/components/feedback/ActivityPanel";
 import { ConfirmDialog } from "@/components/feedback/ConfirmDialog";
 import { Toaster } from "@/components/feedback/Toaster";
 import { CheckoutDialog } from "@/components/dialogs/CheckoutDialog";
@@ -80,6 +81,7 @@ export function AppShell() {
       <RepoOpDialog />
       <RepoCompareDialog />
       <RepoHistoryDialog />
+      <ActivityPanel />
       <Toaster />
       <ConfirmDialog />
     </div>

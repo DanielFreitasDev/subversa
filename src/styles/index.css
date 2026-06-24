@@ -277,6 +277,16 @@
     transform: translateX(100%);
   }
 }
+/* Barra de progresso indeterminada (checkout: sem total conhecido). Um segmento
+   desliza da esquerda para a direita, repetidamente. */
+@keyframes indeterminate {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(350%);
+  }
+}
 .skeleton {
   position: relative;
   overflow: hidden;
