@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { Check, Download, FolderDown, Link2 } from "lucide-react";
+import { open as openDialog } from "@tauri-apps/plugin-dialog";
+import { Check, Download, FolderDown, FolderOpen, Link2 } from "lucide-react";
 
 import * as api from "@/lib/api";
 import { Button } from "@/components/ui/Button";
@@ -18,7 +19,8 @@ export function CheckoutDialog() {
   const setOpen = useUiStore((s) => s.setCheckout);
   const setView = useUiStore((s) => s.setView);
   const projects = useConfigStore((s) => s.config?.projects ?? []);
-  const { baseDir, workingCopies, refresh, select } = useWorkspaceStore();
+  const saveConfig = useConfigStore((s) => s.save);
+  const { baseDir, workingCopies, refresh, select, setBaseDir } = useWorkspaceStore();
 
   const [mode, setMode] = useState<"preset" | "custom">("preset");
   const [presetKey, setPresetKey] = useState<string | null>(null);
@@ -48,6 +50,18 @@ export function CheckoutDialog() {
   const dest = `${baseDir.replace(/\/$/, "")}/${name.trim()}`;
   const isDownloaded = (key: string) => workingCopies.some((w) => w.name === key);
   const canSubmit = useMemo(() => !!url && !!name.trim() && !busy, [url, name, busy]);
+
+  // Deixa o usuário navegar pelo sistema e escolher onde baixar. A pasta
+  // escolhida vira a pasta de trabalho (igual ao seletor da barra lateral),
+  // então o projeto recém-baixado aparece na lista de projetos.
+  const chooseDestFolder = async () => {
+    const dir = await openDialog({ directory: true, defaultPath: baseDir || undefined });
+    if (typeof dir === "string") {
+      setBaseDir(dir);
+      await saveConfig({ baseDir: dir });
+      refresh(dir);
+    }
+  };
 
   const doCheckout = async () => {
     if (!canSubmit) return;
@@ -157,9 +171,25 @@ export function CheckoutDialog() {
         </Label>
       )}
 
-      <div className="mt-4 grid grid-cols-[1fr_auto] items-end gap-3">
+      <div className="mt-4 space-y-3">
+        <div>
+          <span className="text-xs font-medium text-muted">Baixar em</span>
+          <button
+            type="button"
+            onClick={chooseDestFolder}
+            disabled={busy}
+            title={baseDir}
+            className="mt-1 flex w-full items-center gap-2 rounded-lg border border-line bg-panel-2 px-3 py-2 text-left transition-colors hover:border-line-strong hover:bg-panel-3 disabled:pointer-events-none disabled:opacity-50"
+          >
+            <FolderOpen className="size-4 shrink-0 text-faint" />
+            <span className="min-w-0 flex-1 truncate font-mono text-[12px] text-muted">
+              {baseDir || "escolher pasta…"}
+            </span>
+            <span className="shrink-0 text-[11px] text-faint">Procurar…</span>
+          </button>
+        </div>
         <Label>
-          Pasta de destino (nome)
+          Nome da pasta
           <Input
             value={name}
             onChange={(e) => setName(e.target.value)}
