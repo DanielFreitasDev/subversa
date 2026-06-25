@@ -24,6 +24,11 @@ export function Tooltip({
   useEffect(() => () => window.clearTimeout(timer.current), []);
 
   const show = () => {
+    // Limpa um timer pendente antes de agendar outro: quando o gatilho recebe
+    // mouseenter E focus juntos (ex.: clique), o `show` é chamado duas vezes e o
+    // 1º timer ficaria órfão — disparando depois de um `hide`, abrindo um tooltip
+    // que não fecha mais se o gatilho já tiver saído da tela (coberto por modal).
+    window.clearTimeout(timer.current);
     timer.current = window.setTimeout(() => {
       const el = ref.current;
       if (!el) return;

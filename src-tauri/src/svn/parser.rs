@@ -34,6 +34,38 @@ pub struct InfoEntry {
     #[serde(rename = "wc-info")]
     pub wc_info: Option<WcInfo>,
     pub commit: Option<CommitXml>,
+    /// Conflito de texto/propriedade: aponta os arquivos sidecar (base/mine/theirs).
+    pub conflict: Option<TextConflictXml>,
+    /// Conflito de árvore (mover/apagar dos dois lados); só a presença importa aqui.
+    #[serde(rename = "tree-conflict")]
+    pub tree_conflict: Option<TreeConflictXml>,
+}
+
+/// Bloco `<conflict>` do `svn info --xml` (schema oficial `info.rnc`):
+/// `prev-base-file` = BASE (ancestral), `prev-wc-file` = MINE (.mine),
+/// `cur-base-file` = THEIRS (versão do servidor), `prop-file` = rejeição `.prej`.
+/// Caminhos relativos à pasta do arquivo. Tudo opcional por robustez entre versões.
+#[derive(Debug, Deserialize)]
+pub struct TextConflictXml {
+    #[serde(rename = "prev-base-file")]
+    pub prev_base_file: Option<String>,
+    #[serde(rename = "prev-wc-file")]
+    pub prev_wc_file: Option<String>,
+    #[serde(rename = "cur-base-file")]
+    pub cur_base_file: Option<String>,
+    #[serde(rename = "prop-file")]
+    pub prop_file: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[allow(dead_code)] // atributos espelham o schema; só a presença é usada hoje
+pub struct TreeConflictXml {
+    #[serde(rename = "@victim")]
+    pub victim: Option<String>,
+    #[serde(rename = "@operation")]
+    pub operation: Option<String>,
+    #[serde(rename = "@kind")]
+    pub kind: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -428,6 +460,35 @@ mod tests {
             entry.commit.as_ref().unwrap().author.as_deref(),
             Some("daniel")
         );
+    }
+
+    // XML real do `svn info --xml` num arquivo em conflito de texto (svn 1.14):
+    // o bloco <conflict> traz atributos e filhos <version> que devem ser ignorados,
+    // restando os três sidecars (base/mine/theirs).
+    #[test]
+    fn parses_text_conflict_info_xml() {
+        let xml = r#"
+            <info>
+              <entry path="wc2/A.java" revision="2" kind="file">
+                <url>file:///repo/A.java</url>
+                <conflict operation="update" type="text">
+                  <version revision="1" side="source-left" kind="file" path-in-repos="A.java" repos-url="file:///repo"/>
+                  <version side="source-right" kind="file" path-in-repos="A.java" repos-url="file:///repo" revision="2"/>
+                  <prev-base-file>/wc2/A.java.r1</prev-base-file>
+                  <prev-wc-file>/wc2/A.java.mine</prev-wc-file>
+                  <cur-base-file>/wc2/A.java.r2</cur-base-file>
+                </conflict>
+              </entry>
+            </info>
+        "#;
+
+        let parsed = parse_info(xml).unwrap();
+        let conflict = parsed.entries[0].conflict.as_ref().unwrap();
+        assert_eq!(conflict.prev_base_file.as_deref(), Some("/wc2/A.java.r1"));
+        assert_eq!(conflict.prev_wc_file.as_deref(), Some("/wc2/A.java.mine"));
+        assert_eq!(conflict.cur_base_file.as_deref(), Some("/wc2/A.java.r2"));
+        assert!(conflict.prop_file.is_none());
+        assert!(parsed.entries[0].tree_conflict.is_none());
     }
 
     #[test]

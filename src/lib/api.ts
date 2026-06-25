@@ -11,6 +11,7 @@ import type {
   BlameLine,
   CommandLogEntry,
   CommandOutput,
+  ConflictDetails,
   IncomingResult,
   ListEntry,
   LogEntry,
@@ -109,6 +110,14 @@ export const setRevpropMessage = (path: string, revision: string, message: strin
 
 export const resolve = (path: string, accept: string) =>
   invoke<CommandOutput>("resolve", { path, accept });
+
+/** Reúne base/mine/theirs de um conflito para o editor de mesclagem em 3 painéis. */
+export const conflictDetails = (path: string) =>
+  invoke<ConflictDetails>("conflict_details", { path });
+
+/** Grava o conteúdo mesclado e marca o conflito como resolvido (accept=working). */
+export const resolveWithContent = (path: string, content: string) =>
+  invoke<CommandOutput>("resolve_with_content", { path, content });
 
 export const cleanup = (path: string) => invoke<CommandOutput>("cleanup", { path });
 

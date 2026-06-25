@@ -56,6 +56,18 @@ export const HELP = {
     ),
   },
 
+  mergeEditor: {
+    title: "Editor de conflitos (3 painéis)",
+    intro:
+      "Mostra lado a lado as três versões do arquivo: a sua (esquerda), o resultado que você está montando (centro, editável) e a do servidor (direita). Você decide, trecho a trecho, com o que ficar.",
+    points: [
+      "As mudanças que não brigam entre si já entram sozinhas; só os conflitos de verdade (vermelho) precisam de você.",
+      "Em cada trecho, use “Meu” ou “Servidor” para escolher um lado, “Ambos” para juntar os dois, ou “Editar” para escrever na mão.",
+      "Atalhos: n/p pulam para o próximo/anterior conflito.",
+    ],
+    note: "“Salvar resolução” só libera quando não sobrar nenhum conflito pendente. Aí o app grava o arquivo e marca como resolvido.",
+  },
+
   repoLocation: {
     title: "Localização de repositório",
     intro:

@@ -1124,6 +1124,164 @@ pub async fn resolve(
     run(&["resolve", "--accept", &accept, "--", &path], None, mode).await
 }
 
+// ---------------------------------------------------------------------------
+// Conflitos: editor de mesclagem em 3 painéis
+// ---------------------------------------------------------------------------
+
+/// Teto de tamanho por versão lida (base/mine/theirs). Acima disto, sem conteúdo:
+/// o front cai nas opções rápidas em vez de tentar a mescla visual.
+const CONFLICT_MAX_BYTES: u64 = 5 * 1024 * 1024;
+
+/// Resolve o caminho de um sidecar relativo à pasta do arquivo em conflito.
+fn sidecar_path(name: &str, parent: &Path) -> PathBuf {
+    let p = Path::new(name);
+    if p.is_absolute() {
+        p.to_path_buf()
+    } else {
+        parent.join(p)
+    }
+}
+
+/// Lê uma versão sidecar como texto. `(Some, false)` em sucesso; `(None, true)`
+/// se for binário; `(None, false)` se grande demais ou ilegível (degrada para o
+/// fallback em vez de derrubar o comando).
+fn read_conflict_side(p: &Path) -> (Option<String>, bool) {
+    let Ok(meta) = std::fs::metadata(p) else {
+        return (None, false);
+    };
+    if meta.len() > CONFLICT_MAX_BYTES {
+        return (None, false);
+    }
+    let Ok(bytes) = std::fs::read(p) else {
+        return (None, false);
+    };
+    // NUL nos primeiros KB ⇒ binário (sem mescla de texto).
+    if bytes.iter().take(8192).any(|&b| b == 0) {
+        return (None, true);
+    }
+    (Some(String::from_utf8_lossy(&bytes).into_owned()), false)
+}
+
+/// Extrai a revisão do nome do sidecar (`Foo.java.r130` → `130`,
+/// `Foo.merge-right.r130` → `130`). `None` se não terminar em `.r<dígitos>`.
+fn rev_from_sidecar(name: &str) -> Option<String> {
+    let tail = name.rsplit(".r").next()?;
+    if !tail.is_empty() && tail.bytes().all(|b| b.is_ascii_digit()) {
+        Some(tail.to_string())
+    } else {
+        None
+    }
+}
+
+/// Reúne as três versões (base/mine/theirs) de um arquivo em conflito, para o
+/// editor de mesclagem em 3 painéis. Roda `svn info --xml` (independente de
+/// idioma) e lê os arquivos sidecar que o SVN deixou ao lado do arquivo.
+#[tauri::command]
+pub async fn conflict_details(
+    path: String,
+    state: State<'_, AppState>,
+) -> Result<ConflictDetails, String> {
+    let (mode, cfg) = config_snapshot(&state);
+    let abs = validate_local_path(&path, &cfg, "arquivo", false, false)?;
+    let abs_str = abs.to_string_lossy().to_string();
+
+    let info_xml = run_checked(&["info", "--xml", "--", &abs_str], None, mode).await?;
+    let info = parser::parse_info(&info_xml)?;
+    let entry = info
+        .entries
+        .into_iter()
+        .next()
+        .ok_or_else(|| "svn info não retornou dados".to_string())?;
+
+    let parent = abs.parent().map(Path::to_path_buf).unwrap_or_default();
+    let has_tree_conflict = entry.tree_conflict.is_some();
+    let conflict = entry.conflict;
+    let has_property_conflict = conflict.as_ref().map(|c| c.prop_file.is_some()).unwrap_or(false);
+
+    let side = |name: Option<&str>| -> (Option<String>, bool, Option<String>) {
+        match name {
+            Some(n) => {
+                let (content, binary) = read_conflict_side(&sidecar_path(n, &parent));
+                (content, binary, rev_from_sidecar(n))
+            }
+            None => (None, false, None),
+        }
+    };
+
+    let (base, base_bin, base_rev) = side(conflict.as_ref().and_then(|c| c.prev_base_file.as_deref()));
+    let (mine, mine_bin, _) = side(conflict.as_ref().and_then(|c| c.prev_wc_file.as_deref()));
+    let (theirs, theirs_bin, theirs_rev) =
+        side(conflict.as_ref().and_then(|c| c.cur_base_file.as_deref()));
+
+    let binary = base_bin || mine_bin || theirs_bin;
+    // Texto editável só quando temos as três versões legíveis.
+    let is_text = base.is_some() && mine.is_some() && theirs.is_some();
+    let kind = if is_text {
+        "text"
+    } else if has_tree_conflict {
+        "tree"
+    } else if has_property_conflict {
+        "property"
+    } else if conflict.is_some() {
+        "text" // conflito de texto, mas binário/grande/ilegível → front faz fallback
+    } else {
+        "none"
+    };
+
+    let base_label = base_rev
+        .map(|r| format!("Base (r{r})"))
+        .unwrap_or_else(|| "Base".to_string());
+    let theirs_label = theirs_rev
+        .map(|r| format!("Servidor (r{r})"))
+        .unwrap_or_else(|| "Servidor".to_string());
+
+    Ok(ConflictDetails {
+        path: abs_str,
+        kind: kind.to_string(),
+        binary,
+        base,
+        mine,
+        theirs,
+        base_label,
+        theirs_label,
+        has_tree_conflict,
+        has_property_conflict,
+    })
+}
+
+/// Escrita atômica: grava num temporário na mesma pasta e renomeia por cima.
+fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), String> {
+    static SEQ: AtomicU64 = AtomicU64::new(0);
+    let dir = path.parent().ok_or("caminho sem diretório pai")?;
+    let name = path
+        .file_name()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_else(|| "arquivo".into());
+    let seq = SEQ.fetch_add(1, Ordering::Relaxed);
+    let tmp = dir.join(format!(".{name}.subversa.tmp.{}.{seq}", std::process::id()));
+    std::fs::write(&tmp, bytes).map_err(|e| format!("não consegui gravar o arquivo: {e}"))?;
+    std::fs::rename(&tmp, path).map_err(|e| {
+        let _ = std::fs::remove_file(&tmp);
+        format!("não consegui gravar o arquivo: {e}")
+    })
+}
+
+/// Grava o conteúdo mesclado no arquivo e marca o conflito como resolvido
+/// (`svn resolve --accept working`). A gravação é atômica (temp + rename) para
+/// nunca deixar o arquivo pela metade. O `content` já vem com o EOL correto.
+#[tauri::command]
+pub async fn resolve_with_content(
+    path: String,
+    content: String,
+    state: State<'_, AppState>,
+) -> Result<CommandOutput, String> {
+    let (mode, cfg) = config_snapshot(&state);
+    let abs = validate_local_path(&path, &cfg, "arquivo", false, false)?;
+    write_atomic(&abs, content.as_bytes())?;
+    let abs_str = abs.to_string_lossy().to_string();
+    run(&["resolve", "--accept", "working", "--", &abs_str], None, mode).await
+}
+
 #[tauri::command]
 pub async fn cleanup(path: String, state: State<'_, AppState>) -> Result<CommandOutput, String> {
     let mode = mode_of(&state);

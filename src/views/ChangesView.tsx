@@ -14,6 +14,7 @@ import {
 import * as api from "@/lib/api";
 import { DiffViewer } from "@/components/diff/DiffViewer";
 import { ConflictDialog } from "@/components/dialogs/ConflictDialog";
+import { MergeEditor } from "@/components/merge/MergeEditor";
 import { StatusLetter } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Loading } from "@/components/ui/Spinner";
@@ -151,6 +152,9 @@ function Changes({ wc }: { wc: WorkingCopy }) {
   const [committing, setCommitting] = useState(false);
   const [checkingServer, setCheckingServer] = useState(false);
   const [conflictPath, setConflictPath] = useState<string | null>(null);
+  // Editor visual de 3 painéis (conflitos de texto); o ConflictDialog cobre
+  // árvore/propriedade/binário e serve de fallback.
+  const [mergePath, setMergePath] = useState<string | null>(null);
   // Semeia a seleção só uma vez por WC (o componente remonta via key={wc.path}).
   const seededRef = useRef(false);
 
@@ -370,7 +374,11 @@ function Changes({ wc }: { wc: WorkingCopy }) {
                 onHighlight={() => setHighlight(e.path)}
                 onRevert={() => revertPaths([e.path])}
                 onReveal={() => tryRun(() => api.revealInFileManager(e.path), "Não consegui abrir o gerenciador de arquivos")}
-                onResolve={() => setConflictPath(e.path)}
+                onResolve={() =>
+                  e.item === "conflicted" && !e.treeConflicted
+                    ? setMergePath(e.path)
+                    : setConflictPath(e.path)
+                }
               />
             ))
           )}
@@ -468,6 +476,20 @@ function Changes({ wc }: { wc: WorkingCopy }) {
           )}
         </div>
       </div>
+
+      <MergeEditor
+        open={!!mergePath}
+        path={mergePath}
+        onClose={() => setMergePath(null)}
+        onResolved={async () => {
+          await reload(false);
+          await refreshOne(wc.path);
+        }}
+        onFallback={(p) => {
+          setMergePath(null);
+          setConflictPath(p);
+        }}
+      />
 
       <ConflictDialog
         open={!!conflictPath}

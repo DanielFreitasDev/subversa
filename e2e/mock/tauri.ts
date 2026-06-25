@@ -21,6 +21,7 @@ export interface MockData {
   branchList: Record<string, unknown>[];
   rootList: Record<string, unknown>[];
   commandLog: Record<string, unknown>[];
+  conflictDetails: Record<string, unknown>;
 }
 
 export function buildFixtures(theme: Theme): MockData {
@@ -171,7 +172,70 @@ export function buildFixtures(theme: Theme): MockData {
       command: "svn switch --non-interactive --accept postpone -- svn+ssh://svn.tjsc.local/usr/svn/sna/branches/x /home/daniel/projetos/sna" },
   ];
 
-  return { config, wcs, status, diff, log, branchList, rootList, commandLog };
+  // Conflito de texto do arquivo "Conciliador.java": as três versões são montadas
+  // para exercitar todos os tipos de região do diff3 — `both` (pacote mudado igual
+  // nos dois lados), `left` (só eu mudei o total), `right` (servidor adicionou um
+  // método) e `conflict` (nome retorna valores diferentes).
+  const cBase = [
+    "package br.tjsc.sna.merge;",
+    "",
+    "public class Conciliador {",
+    "  public int total(int a, int b) {",
+    "    return a + b;",
+    "  }",
+    "",
+    "  public String nome() {",
+    '    return "base";',
+    "  }",
+    "}",
+    "",
+  ].join("\n");
+  const cMine = [
+    "package br.tjsc.sna.conciliacao;",
+    "",
+    "public class Conciliador {",
+    "  public int total(int a, int b) {",
+    "    return a + b + imposto;",
+    "  }",
+    "",
+    "  public String nome() {",
+    '    return "meu";',
+    "  }",
+    "}",
+    "",
+  ].join("\n");
+  const cTheirs = [
+    "package br.tjsc.sna.conciliacao;",
+    "",
+    "public class Conciliador {",
+    "  public int total(int a, int b) {",
+    "    return a + b;",
+    "  }",
+    "",
+    "  public String nome() {",
+    '    return "servidor";',
+    "  }",
+    "",
+    "  public boolean extra() {",
+    "    return true;",
+    "  }",
+    "}",
+    "",
+  ].join("\n");
+  const conflictDetails = {
+    path: "/home/daniel/projetos/sna/src/merge/Conciliador.java",
+    kind: "text",
+    binary: false,
+    base: cBase,
+    mine: cMine,
+    theirs: cTheirs,
+    baseLabel: "Base (r4815)",
+    theirsLabel: "Servidor (r4821)",
+    hasTreeConflict: false,
+    hasPropertyConflict: false,
+  };
+
+  return { config, wcs, status, diff, log, branchList, rootList, commandLog, conflictDetails };
 }
 
 export function tauriInit(fx: MockData) {
@@ -217,6 +281,8 @@ export function tauriInit(fx: MockData) {
       }
       case "cat_file":
         return "package br.tjsc.sna.processo;\n\npublic class ProcessoService {\n  // ...\n}\n";
+      case "conflict_details":
+        return fx.conflictDetails;
       case "blame":
         return [];
       case "get_url_info":
@@ -244,6 +310,7 @@ export function tauriInit(fx: MockData) {
       case "remove": case "create_branch": case "switch_wc": case "merge": case "resolve":
       case "cleanup": case "delete_remote": case "export_path": case "import_path":
       case "make_dir": case "move_remote": case "reverse_merge": case "set_revprop_message":
+      case "resolve_with_content":
         return ok("svn " + cmd);
       default:
         (window as unknown as { __UNMOCKED: string[] }).__UNMOCKED.push(cmd);

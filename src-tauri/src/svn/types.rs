@@ -31,6 +31,27 @@ pub struct CommandOutput {
     pub command: String,
 }
 
+/// Detalhes de um conflito para o editor de mesclagem em 3 painéis.
+///
+/// `kind`: `text` (conteúdo, abre o editor), `tree` (árvore), `property`
+/// (propriedade) ou `none`. Para texto, `base`/`mine`/`theirs` trazem o conteúdo
+/// das três versões (ancestral comum, minha local, do servidor). Vêm `None` quando
+/// o arquivo é binário, grande demais ou ilegível — aí o front cai nas opções rápidas.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConflictDetails {
+    pub path: String,
+    pub kind: String,
+    pub binary: bool,
+    pub base: Option<String>,
+    pub mine: Option<String>,
+    pub theirs: Option<String>,
+    pub base_label: String,
+    pub theirs_label: String,
+    pub has_tree_conflict: bool,
+    pub has_property_conflict: bool,
+}
+
 /// Uma entrada do registro de comandos (auditoria do que o app rodou no `svn`).
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]

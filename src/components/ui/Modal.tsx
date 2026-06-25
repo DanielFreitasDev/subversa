@@ -8,13 +8,14 @@ import { useFocusTrap } from "@/hooks/useFocusTrap";
 import { IconButton } from "./Button";
 import { HelpPopover, type HelpContent } from "./HelpPopover";
 
-type Size = "sm" | "md" | "lg" | "xl";
+type Size = "sm" | "md" | "lg" | "xl" | "full";
 
 const SIZES: Record<Size, string> = {
   sm: "max-w-md",
   md: "max-w-xl",
   lg: "max-w-3xl",
   xl: "max-w-5xl",
+  full: "max-w-[96vw]",
 };
 
 export interface ModalProps {

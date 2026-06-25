@@ -37,6 +37,40 @@ test.describe("tema escuro", () => {
     await expect(page).toHaveScreenshot("changes.png");
   });
 
+  test("editor de conflitos em 3 painéis", async ({ page }) => {
+    await gotoApp(page);
+    await openFirstWc(page);
+
+    // Abre o editor visual no arquivo em conflito (ação revelada no hover).
+    const row = page.locator(".group").filter({ hasText: "Conciliador.java" }).first();
+    await row.hover();
+    await row.getByRole("button", { name: "Resolver conflito" }).click();
+    await page.mouse.move(720, 760);
+    await page.waitForTimeout(450);
+
+    // Três painéis + contador de conflito pendente.
+    await expect(page.getByText("LOCAL (meu)")).toBeVisible();
+    await expect(page.getByText("RESULTADO (editável)")).toBeVisible();
+    await expect(page.getByText("SERVIDOR (deles)")).toBeVisible();
+    await expect(page.getByText("1 conflito restante")).toBeVisible();
+    await expect(page.getByText(/Conflito — escolha um lado/)).toBeVisible();
+    // Salvar trava enquanto houver conflito pendente.
+    await expect(page.getByRole("button", { name: /Salvar resolução/ })).toBeDisabled();
+
+    // O gatilho "Resolver conflito" fica coberto pelo modal e nunca recebe
+    // mouseleave; no StrictMode (dev) o foco-trap o re-foca ao montar, reabrindo
+    // seu tooltip de forma racy. É puramente visual (não acontece em produção) —
+    // um MutationObserver remove o nó assim que ele aparece, p/ baseline limpo.
+    await page.evaluate(() => {
+      const kill = () =>
+        document.querySelectorAll("div.pointer-events-none.max-w-xs").forEach((n) => n.remove());
+      kill();
+      new MutationObserver(kill).observe(document.body, { childList: true, subtree: true });
+    });
+    await page.waitForTimeout(150);
+    await expect(page).toHaveScreenshot("merge-editor.png");
+  });
+
   test("histórico (log + diff da revisão)", async ({ page }) => {
     await gotoApp(page);
     await openFirstWc(page);
@@ -199,6 +233,28 @@ test.describe("interações", () => {
     // Confirma no diálogo → toast de sucesso (o mock devolve "Revisão 4821").
     await page.getByRole("button", { name: "Commitar", exact: true }).click();
     await expect(page.getByText("Commit enviado")).toBeVisible();
+  });
+
+  test("editor de conflitos: resolver e salvar", async ({ page }) => {
+    await gotoApp(page);
+    await openFirstWc(page);
+
+    const row = page.locator(".group").filter({ hasText: "Conciliador.java" }).first();
+    await row.hover();
+    await row.getByRole("button", { name: "Resolver conflito" }).click();
+    await page.waitForTimeout(300);
+
+    // Salvar começa travado (1 conflito pendente).
+    const save = page.getByRole("button", { name: /Salvar resolução/ });
+    await expect(save).toBeDisabled();
+
+    // Resolve o conflito pegando o lado do servidor → libera o salvar.
+    await page.getByRole("button", { name: "Servidor", exact: true }).first().click();
+    await expect(page.getByText("Sem conflitos pendentes")).toBeVisible();
+    await expect(save).toBeEnabled();
+
+    await save.click();
+    await expect(page.getByText("Conflito resolvido")).toBeVisible();
   });
 
   test("apagar branch do servidor exige digitar o nome (safety rail)", async ({ page }) => {

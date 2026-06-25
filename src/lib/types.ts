@@ -110,6 +110,25 @@ export interface StatusResult {
   incomingCount: number;
 }
 
+/**
+ * Detalhes de um conflito para o editor de mesclagem em 3 painéis.
+ * `kind`: "text" abre o editor visual; "tree"/"property"/"none" caem nas opções
+ * rápidas. Para texto, `base`/`mine`/`theirs` trazem as três versões (ancestral
+ * comum, minha local, do servidor); vêm `null` se binário, grande demais ou ilegível.
+ */
+export interface ConflictDetails {
+  path: string;
+  kind: "text" | "tree" | "property" | "none" | string;
+  binary: boolean;
+  base: string | null;
+  mine: string | null;
+  theirs: string | null;
+  baseLabel: string;
+  theirsLabel: string;
+  hasTreeConflict: boolean;
+  hasPropertyConflict: boolean;
+}
+
 export interface LogPath {
   action: string;
   path: string;
