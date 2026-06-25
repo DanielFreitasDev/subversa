@@ -22,6 +22,7 @@ export interface MockData {
   rootList: Record<string, unknown>[];
   commandLog: Record<string, unknown>[];
   conflictDetails: Record<string, unknown>;
+  backups: Record<string, unknown>[];
 }
 
 export function buildFixtures(theme: Theme): MockData {
@@ -45,6 +46,9 @@ export function buildFixtures(theme: Theme): MockData {
     externalDiffTool: "meld",
     verbose: false,
     confirmServerOps: true,
+    backupMode: "ask",
+    backupKeep: 5,
+    backupDir: "",
   };
 
   const mkWc = (o: Record<string, unknown>) => ({
@@ -235,7 +239,38 @@ export function buildFixtures(theme: Theme): MockData {
     hasPropertyConflict: false,
   };
 
-  return { config, wcs, status, diff, log, branchList, rootList, commandLog, conflictDetails };
+  // Datas fixas no passado (faixa "absoluta" do formatRelative) para o snapshot
+  // não variar com o tempo de execução.
+  const backups = [
+    {
+      id: "sna-1100-7",
+      wcPath: "/home/daniel/projetos/sna",
+      wcName: "sna",
+      op: "merge",
+      url: ROOT + "/sna/trunk",
+      branchLabel: "trunk",
+      revision: "4821",
+      createdMs: Date.UTC(2026, 4, 20, 17, 30, 0),
+      sizeBytes: 184523776,
+      fileCount: 1342,
+    },
+    {
+      id: "getran-980-3",
+      wcPath: "/home/daniel/projetos/getran",
+      wcName: "getran",
+      op: "update",
+      url: ROOT + "/getran/branches/ISSUES 2026/06 - JUNHO/issue_1234",
+      branchLabel: "ISSUES 2026/06 - JUNHO/issue_1234",
+      revision: "4790",
+      createdMs: Date.UTC(2026, 3, 10, 12, 0, 0),
+      sizeBytes: 52428800,
+      fileCount: 512,
+    },
+  ];
+
+  return {
+    config, wcs, status, diff, log, branchList, rootList, commandLog, conflictDetails, backups,
+  };
 }
 
 export function tauriInit(fx: MockData) {
@@ -306,6 +341,27 @@ export function tauriInit(fx: MockData) {
         return null;
       case "command_log_path":
         return "/home/daniel/.local/share/subversa/svn.log";
+      case "list_backups":
+        return fx.backups;
+      case "create_backup":
+        return {
+          id: "novo-1",
+          wcPath: (args && args.path) || "/home/daniel/projetos/sna",
+          wcName: (args && args.name) || "sna",
+          op: (args && args.op) || "manual",
+          url: (args && args.url) || "",
+          branchLabel: (args && args.branchLabel) || "trunk",
+          revision: (args && args.revision) || "4821",
+          createdMs: Date.UTC(2026, 5, 24, 9, 0, 0),
+          sizeBytes: 184523776,
+          fileCount: 1342,
+        };
+      case "restore_backup":
+        return ok("restaurar backup");
+      case "delete_backup":
+        return null;
+      case "backups_dir":
+        return "/home/daniel/.cache/subversa/backups";
       case "checkout": case "update": case "commit": case "svn_add": case "revert":
       case "remove": case "create_branch": case "switch_wc": case "merge": case "resolve":
       case "cleanup": case "delete_remote": case "export_path": case "import_path":

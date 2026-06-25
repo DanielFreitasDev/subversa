@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import {
+  Archive,
   ArrowDownToLine,
   Database,
   Download,
@@ -16,6 +17,7 @@ import {
   RotateCcw,
   Search,
   Settings,
+  ShieldCheck,
   Terminal,
   TreePine,
   Upload,
@@ -23,6 +25,7 @@ import {
 } from "lucide-react";
 
 import { revealInFileManager } from "@/lib/api";
+import { createRestorePoint } from "@/lib/backup";
 import { tryRun } from "@/lib/op";
 import { cn } from "@/lib/utils";
 import { HelpPopover } from "@/components/ui/HelpPopover";
@@ -92,6 +95,14 @@ export function CommandPalette() {
         keywords: "registro log comandos svn auditoria historico terminal",
         section: "Navegação",
         run: close(() => setView("log")),
+      },
+      {
+        id: "nav-backups",
+        title: "Abrir Backups (pontos de restauração)",
+        icon: <Archive className="size-4" />,
+        keywords: "backup restaurar ponto restauracao copia seguranca reverter",
+        section: "Navegação",
+        run: close(() => setView("backups")),
       },
       {
         id: "checkout",
@@ -215,6 +226,15 @@ export function CommandPalette() {
           keywords: "descartar desfazer",
           section: "Ações",
           run: close(() => revertAll(wc)),
+        },
+        {
+          id: "create-backup",
+          title: "Criar ponto de restauração agora",
+          subtitle: wc.name,
+          icon: <ShieldCheck className="size-4" />,
+          keywords: "backup copia seguranca snapshot ponto restauracao salvar",
+          section: "Ações",
+          run: close(() => createRestorePoint(wc, "manual")),
         },
         {
           id: "reveal",

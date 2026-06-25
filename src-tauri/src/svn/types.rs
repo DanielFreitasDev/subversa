@@ -90,6 +90,34 @@ pub struct OpProgress {
     pub done: bool,
 }
 
+/// Um ponto de restauração (backup) de uma working copy: uma cópia completa da
+/// pasta (incluindo o `.svn`) feita antes de uma operação destrutiva, para poder
+/// voltar ao estado exato anterior. O `meta.json` ao lado da cópia serializa isto.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BackupEntry {
+    /// Identificador único (também é o nome da pasta do backup em disco).
+    pub id: String,
+    /// Caminho absoluto da working copy de origem (alvo da restauração).
+    pub wc_path: String,
+    /// Nome da pasta da working copy (ex.: `sna`).
+    pub wc_name: String,
+    /// Operação que motivou o backup (ex.: `merge`, `update`, `switch`).
+    pub op: String,
+    /// URL da working copy no momento do backup.
+    pub url: String,
+    /// Rótulo legível da linha (ex.: `trunk` ou `ISSUES 2026/...`).
+    pub branch_label: String,
+    /// Revisão da working copy no momento do backup.
+    pub revision: String,
+    /// Momento da criação, em epoch milissegundos (UTC). A UI formata em local.
+    pub created_ms: u64,
+    /// Tamanho total copiado, em bytes.
+    pub size_bytes: u64,
+    /// Quantidade de arquivos copiados.
+    pub file_count: u64,
+}
+
 /// Disponibilidade dos binários externos exigidos em tempo de execução.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -312,6 +340,26 @@ pub struct AppConfig {
     pub verbose: bool,
     /// Pedir confirmação antes de operações que escrevem no servidor.
     pub confirm_server_ops: bool,
+    /// Como oferecer um backup (ponto de restauração) antes de operações
+    /// destrutivas: `ask` (pergunta a cada vez), `always` (faz sempre, sem
+    /// perguntar) ou `off` (nunca oferece).
+    #[serde(default = "default_backup_mode")]
+    pub backup_mode: String,
+    /// Quantos backups manter por working copy (os mais antigos são removidos).
+    /// `0` = ilimitado (nunca remove automaticamente).
+    #[serde(default = "default_backup_keep")]
+    pub backup_keep: u32,
+    /// Pasta-base dos backups. Vazio = `~/.cache/subversa/backups`.
+    #[serde(default)]
+    pub backup_dir: String,
+}
+
+fn default_backup_mode() -> String {
+    "ask".into()
+}
+
+fn default_backup_keep() -> u32 {
+    5
 }
 
 impl Default for AppConfig {
@@ -333,6 +381,9 @@ impl Default for AppConfig {
             external_diff_tool: "meld".into(),
             verbose: false,
             confirm_server_ops: true,
+            backup_mode: default_backup_mode(),
+            backup_keep: default_backup_keep(),
+            backup_dir: String::new(),
         }
     }
 }

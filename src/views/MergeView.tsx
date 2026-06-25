@@ -15,11 +15,11 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Field";
 import { HelpPopover, type HelpContent } from "@/components/ui/HelpPopover";
 import { useSelectedWc } from "@/hooks/useSelectedWc";
+import { guardDestructive } from "@/lib/backup";
 import { MERGE_HELP } from "@/lib/help";
 import { extractRevision, reportOutput, tryRun } from "@/lib/op";
 import type { StatusEntry, WorkingCopy } from "@/lib/types";
 import { cn, decodeUrl } from "@/lib/utils";
-import { confirm } from "@/store/confirm";
 import { useConfigStore } from "@/store/config";
 import { toast } from "@/store/toast";
 import { useUiStore } from "@/store/ui";
@@ -144,14 +144,15 @@ function Merge({ wc }: { wc: WorkingCopy }) {
   const runSync = async () => {
     if (busy) return;
     if (!mainlineUrl) return;
-    if (confirmServerOps) {
-      const ok = await confirm({
+    const ok = await guardDestructive(wc, "sincronizar (sync)", {
+      confirm: {
         title: "Receber a linha principal?",
         message: `Traz o trunk para a sua branch e commita o merge.\n\nDe: ${decodeUrl(mainlineUrl)}`,
         confirmLabel: "Receber e commitar",
-      });
-      if (!ok) return;
-    }
+      },
+      confirmRequired: confirmServerOps,
+    });
+    if (!ok) return;
     if (!(await ensureClean())) return;
     setBusy("sync");
     setOutput("");
@@ -193,12 +194,15 @@ function Merge({ wc }: { wc: WorkingCopy }) {
       toast.error("Projeto não reconhecido", "Não sei qual é a linha principal deste projeto.");
       return;
     }
-    const ok = await confirm({
-      title: "Publicar na linha principal?",
-      message:
-        "A working copy será trocada para o trunk, atualizada e a sua branch será mesclada nela. " +
-        "Em seguida você revisa e commita na aba Alterações (esse commit publica).",
-      confirmLabel: "Iniciar publicação",
+    const ok = await guardDestructive(wc, "publicar (reintegrar)", {
+      confirm: {
+        title: "Publicar na linha principal?",
+        message:
+          "A working copy será trocada para o trunk, atualizada e a sua branch será mesclada nela. " +
+          "Em seguida você revisa e commita na aba Alterações (esse commit publica).",
+        confirmLabel: "Iniciar publicação",
+      },
+      confirmRequired: true,
     });
     if (!ok) return;
     if (!(await ensureClean())) return;
@@ -248,6 +252,17 @@ function Merge({ wc }: { wc: WorkingCopy }) {
     if (busy) return;
     const url = branchUrl.trim();
     if (!url) return toast.warn("Informe a URL da branch a reintegrar");
+    if (!dry) {
+      const ok = await guardDestructive(wc, "reintegrar branch", {
+        confirm: {
+          title: "Mesclar esta branch no trunk?",
+          message: `Vai atualizar o trunk e mesclar:\n\n${decodeUrl(url)}\n\nDepois você revisa e commita na aba Alterações.`,
+          confirmLabel: "Mesclar branch",
+        },
+        confirmRequired: true,
+      });
+      if (!ok) return;
+    }
     setBusy(dry ? "preview" : "reintegrate");
     setOutput("");
     try {

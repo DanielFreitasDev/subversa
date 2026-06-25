@@ -94,6 +94,12 @@ pub fn run() {
             svn::commands::get_command_log,
             svn::commands::clear_command_log,
             svn::commands::command_log_path,
+            // backups (pontos de restauração)
+            svn::backup::create_backup,
+            svn::backup::list_backups,
+            svn::backup::restore_backup,
+            svn::backup::delete_backup,
+            svn::backup::backups_dir,
         ])
         .on_window_event(move |_window, event| {
             // Ao fechar a janela, encerra a conexão SSH mestre (best-effort).

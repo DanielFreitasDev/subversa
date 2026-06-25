@@ -22,6 +22,7 @@ import { MergeView } from "@/views/MergeView";
 import { OverviewView } from "@/views/OverviewView";
 import { ReposView } from "@/views/ReposView";
 import { SettingsView } from "@/views/SettingsView";
+import { BackupsView } from "@/views/BackupsView";
 import { useUiStore } from "@/store/ui";
 
 function ViewRouter() {
@@ -44,6 +45,8 @@ function ViewRouter() {
         return <ReposView />;
       case "log":
         return <CommandLogView />;
+      case "backups":
+        return <BackupsView />;
       case "settings":
         return <SettingsView />;
     }

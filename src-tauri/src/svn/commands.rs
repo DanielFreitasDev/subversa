@@ -42,14 +42,14 @@ fn snapshot(state: &State<AppState>) -> (SshMode, Vec<Project>) {
 }
 
 /// Snapshot completo para validações, sem segurar o lock durante `await`.
-fn config_snapshot(state: &State<AppState>) -> (SshMode, AppConfig) {
+pub(crate) fn config_snapshot(state: &State<AppState>) -> (SshMode, AppConfig) {
     match state.config.lock() {
         Ok(c) => (c.ssh_mode, c.clone()),
         Err(_) => (SshMode::Auto, AppConfig::default()),
     }
 }
 
-fn is_wc(path: &Path) -> bool {
+pub(crate) fn is_wc(path: &Path) -> bool {
     path.join(".svn").is_dir()
 }
 
@@ -190,7 +190,7 @@ fn comparable_local_path(path: &Path) -> PathBuf {
     normalize_local_path(path)
 }
 
-fn validate_local_path(
+pub(crate) fn validate_local_path(
     raw: &str,
     cfg: &AppConfig,
     label: &str,
@@ -716,14 +716,36 @@ const OP_PROGRESS_EVENT: &str = "op-progress";
 
 /// Intervalo mínimo entre eventos de progresso: uma operação grande imprime
 /// milhares de linhas em rajada — sem isso, inundaríamos o IPC com a UI.
-const PROGRESS_INTERVAL: Duration = Duration::from_millis(60);
+pub(crate) const PROGRESS_INTERVAL: Duration = Duration::from_millis(60);
 
 /// Contador monotônico de execuções, para dar um `id` único a cada operação
 /// (a UI distingue cartões de operações simultâneas por ele).
 static OP_SEQ: AtomicU64 = AtomicU64::new(0);
 
-fn next_op_id() -> u64 {
+pub(crate) fn next_op_id() -> u64 {
     OP_SEQ.fetch_add(1, Ordering::Relaxed)
+}
+
+/// Emite um evento `op-progress` para a UI (painel de atividade). Compartilhado
+/// pelas operações `svn` em streaming e pelos backups/restaurações.
+pub(crate) fn emit_op_progress(
+    app: &AppHandle,
+    id: u64,
+    op: &str,
+    count: u64,
+    path: &str,
+    done: bool,
+) {
+    let _ = app.emit(
+        OP_PROGRESS_EVENT,
+        OpProgress {
+            id,
+            op: op.to_string(),
+            count,
+            path: path.to_string(),
+            done,
+        },
+    );
 }
 
 /// Extrai o caminho de uma linha de progresso do `svn` (`"A    caminho"`): o
@@ -755,16 +777,7 @@ async fn run_streaming_op(
 ) -> Result<CommandOutput, String> {
     let id = next_op_id();
     // Evento inicial: a UI mostra "<operação>…" antes mesmo do primeiro arquivo.
-    let _ = app.emit(
-        OP_PROGRESS_EVENT,
-        OpProgress {
-            id,
-            op: op.to_string(),
-            count: 0,
-            path: String::new(),
-            done: false,
-        },
-    );
+    emit_op_progress(app, id, op, 0, "", false);
 
     let emitter = app.clone();
     let op_label = op.to_string();
@@ -778,16 +791,7 @@ async fn run_streaming_op(
         let now = Instant::now();
         if now.duration_since(last_emit) >= PROGRESS_INTERVAL {
             last_emit = now;
-            let _ = emitter.emit(
-                OP_PROGRESS_EVENT,
-                OpProgress {
-                    id,
-                    op: op_label.clone(),
-                    count,
-                    path: path.to_string(),
-                    done: false,
-                },
-            );
+            emit_op_progress(&emitter, id, &op_label, count, path, false);
         }
     };
 
@@ -795,16 +799,7 @@ async fn run_streaming_op(
 
     // Evento final com o total exato (o throttle pode ter omitido a última
     // rajada). Emitido também em erro, para a UI remover o cartão.
-    let _ = app.emit(
-        OP_PROGRESS_EVENT,
-        OpProgress {
-            id,
-            op: op.to_string(),
-            count,
-            path: String::new(),
-            done: true,
-        },
-    );
+    emit_op_progress(app, id, op, count, "", true);
     out
 }
 

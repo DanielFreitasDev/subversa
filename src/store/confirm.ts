@@ -2,6 +2,8 @@
 
 import { create } from "zustand";
 
+import type { WorkingCopy } from "@/lib/types";
+
 export interface ConfirmOptions {
   title: string;
   message?: string;
@@ -14,6 +16,12 @@ export interface ConfirmOptions {
   requireText?: string;
   /** Ícone (nome do lucide) opcional. */
   icon?: string;
+  /**
+   * Oferece um backup (ponto de restauração) antes de confirmar. Quando
+   * presente e o modo de backup não for `off`, o diálogo mostra a opção e cria
+   * o backup (aguardando) antes de resolver `true`.
+   */
+  backup?: { wc: WorkingCopy; op: string };
 }
 
 interface ConfirmState {

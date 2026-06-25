@@ -11,6 +11,7 @@ export type ViewId =
   | "merge"
   | "repos"
   | "log"
+  | "backups"
   | "settings";
 
 export type DiffMode = "unified" | "split";

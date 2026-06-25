@@ -11,7 +11,14 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { listen } from "@tauri-apps/api/event";
 import { AnimatePresence, motion } from "framer-motion";
-import { GitBranch, GitMerge, HardDriveDownload, RefreshCw } from "lucide-react";
+import {
+  Archive,
+  GitBranch,
+  GitMerge,
+  HardDriveDownload,
+  RefreshCw,
+  RotateCcw,
+} from "lucide-react";
 
 import type { OpProgress, TransferOp } from "@/lib/types";
 import { TransferProgress } from "./TransferProgress";
@@ -21,6 +28,8 @@ const PANEL_OPS: Partial<Record<TransferOp, { label: string; icon: ReactNode }>>
   switch: { label: "Trocando de linha", icon: <GitBranch className="size-4" /> },
   merge: { label: "Mesclando", icon: <GitMerge className="size-4" /> },
   export: { label: "Exportando", icon: <HardDriveDownload className="size-4" /> },
+  backup: { label: "Fazendo backup", icon: <Archive className="size-4" /> },
+  restore: { label: "Restaurando backup", icon: <RotateCcw className="size-4" /> },
 };
 
 /** Quanto tempo o cartão fica mostrando o total final antes de sumir. */

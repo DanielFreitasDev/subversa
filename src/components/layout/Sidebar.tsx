@@ -1,6 +1,7 @@
 import { open } from "@tauri-apps/plugin-dialog";
 import {
   AlertTriangle,
+  Archive,
   Database,
   Download,
   FolderOpen,
@@ -132,6 +133,16 @@ export function Sidebar() {
           <Terminal className="size-4" />
           Registro
         </button>
+        <button
+          onClick={() => setView("backups")}
+          className={cn(
+            "flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-[13px] font-medium transition-colors",
+            view === "backups" ? "bg-brand/12 text-brand" : "text-muted hover:bg-panel-2 hover:text-ink",
+          )}
+        >
+          <Archive className="size-4" />
+          Backups
+        </button>
       </div>
 
       <div className="mt-4 flex items-center justify-between px-4">
@@ -196,11 +207,18 @@ export function Sidebar() {
               view !== "overview" &&
               view !== "settings" &&
               view !== "repos" &&
-              view !== "log"
+              view !== "log" &&
+              view !== "backups"
             }
             onClick={() => {
               select(wc.path);
-              if (view === "overview" || view === "settings" || view === "repos" || view === "log")
+              if (
+                view === "overview" ||
+                view === "settings" ||
+                view === "repos" ||
+                view === "log" ||
+                view === "backups"
+              )
                 setView("changes");
             }}
           />

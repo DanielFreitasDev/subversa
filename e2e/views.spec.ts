@@ -215,6 +215,36 @@ test.describe("registro de comandos", () => {
   });
 });
 
+test.describe("backups", () => {
+  // Fuso fixo (UTC-3) → a data absoluta renderizada fica determinística.
+  test.use({ timezoneId: "America/Sao_Paulo" });
+
+  test("backups (pontos de restauração)", async ({ page }) => {
+    await gotoApp(page);
+    await page.getByRole("button", { name: "Backups", exact: true }).click();
+    await page.waitForTimeout(400);
+
+    await expect(page.getByRole("heading", { name: "Backups" })).toBeVisible();
+    await expect(page.getByText("antes de: merge")).toBeVisible();
+    await expect(page.getByText("antes de: update")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Restaurar" }).first()).toBeVisible();
+
+    await expect(page).toHaveScreenshot("backups.png");
+  });
+
+  test("operação destrutiva oferece backup", async ({ page }) => {
+    await gotoApp(page);
+    // "Atualizar" (Visão geral) dispara a guarda: o diálogo oferece o backup.
+    await page.getByRole("button", { name: "Atualizar", exact: true }).first().click();
+    await page.waitForTimeout(300);
+
+    await expect(page.getByText("Receber alterações do servidor?")).toBeVisible();
+    await expect(page.getByText(/Fazer um backup/)).toBeVisible();
+
+    await expect(page).toHaveScreenshot("backup-prompt.png");
+  });
+});
+
 // Fluxos de escrita (sem screenshot): exercitam confirmações e safety rails.
 test.describe("interações", () => {
   test("commit direto na trunk pede confirmação e envia", async ({ page }) => {

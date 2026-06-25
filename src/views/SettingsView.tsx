@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { getVersion } from "@tauri-apps/api/app";
 import {
+  Archive,
   Database,
   FolderOpen,
   Info,
@@ -79,6 +80,8 @@ export function SettingsView() {
 
   const [host, setHost] = useState(config?.host ?? "");
   const [tool, setTool] = useState(config?.externalDiffTool ?? "meld");
+  const [keep, setKeep] = useState(String(config?.backupKeep ?? 5));
+  const [backupDir, setBackupDir] = useState(config?.backupDir ?? "");
   const [projects, setProjects] = useState<Project[]>(config?.projects ?? []);
   const [repoBase, setRepoBase] = useState(config?.repoBase ?? "");
   const [newRoot, setNewRoot] = useState("");
@@ -100,6 +103,8 @@ export function SettingsView() {
     if (!prev || prev.externalDiffTool !== config.externalDiffTool)
       setTool(config.externalDiffTool);
     if (!prev || prev.repoBase !== config.repoBase) setRepoBase(config.repoBase);
+    if (!prev || prev.backupKeep !== config.backupKeep) setKeep(String(config.backupKeep));
+    if (!prev || prev.backupDir !== config.backupDir) setBackupDir(config.backupDir);
     if (!projectsDirty && (!prev || prev.projects !== config.projects))
       setProjects(config.projects);
   }, [config, projectsDirty]);
@@ -127,6 +132,17 @@ export function SettingsView() {
     const out = await tryRun(() => api.testConnection(target), "Falha na conexão");
     setTesting(false);
     if (out) reportOutput(out, "Conexão OK", "O servidor respondeu.");
+  };
+
+  const commitKeep = () => {
+    const n = Math.max(0, Math.floor(Number(keep)) || 0);
+    setKeep(String(n));
+    if (n !== config.backupKeep) save({ backupKeep: n });
+  };
+
+  const openBackupsFolder = async () => {
+    const dir = await tryRun(() => api.backupsDir(), "Falha ao abrir a pasta");
+    if (dir) await api.revealInFileManager(dir);
   };
 
   const updateProject = (i: number, patch: Partial<Project>) => {
@@ -408,6 +424,57 @@ export function SettingsView() {
               onBlur={() => tool !== config.externalDiffTool && save({ externalDiffTool: tool })}
               className="w-40 text-[12px]"
             />
+          </Row>
+        </Section>
+
+        {/* Pontos de restauração (backup) */}
+        <Section
+          icon={<Archive className="size-4" />}
+          title="Pontos de restauração (backup)"
+          description="Backup da cópia local antes de operações destrutivas"
+          help={HELP.settingsBackups}
+        >
+          <Row
+            label="Oferecer backup antes de operações destrutivas"
+            hint="Antes de merge, atualizar, trocar de linha e reverter"
+          >
+            <Segmented
+              size="sm"
+              value={config.backupMode}
+              onChange={(v) => save({ backupMode: v })}
+              options={[
+                { value: "ask", label: "Perguntar" },
+                { value: "always", label: "Sempre" },
+                { value: "off", label: "Desligado" },
+              ]}
+            />
+          </Row>
+          <Row
+            label="Quantos manter por projeto"
+            hint="Os mais antigos são apagados automaticamente (0 = manter todos)"
+          >
+            <Input
+              type="number"
+              min={0}
+              value={keep}
+              onChange={(e) => setKeep(e.target.value)}
+              onBlur={commitKeep}
+              className="w-20 text-[12px]"
+            />
+          </Row>
+          <Row label="Pasta dos backups" hint="Vazio = pasta de cache do sistema">
+            <div className="flex items-center gap-2">
+              <Input
+                value={backupDir}
+                onChange={(e) => setBackupDir(e.target.value)}
+                onBlur={() => backupDir !== config.backupDir && save({ backupDir })}
+                placeholder="(cache do sistema)"
+                className="w-52 text-[12px]"
+              />
+              <Button size="sm" variant="ghost" onClick={openBackupsFolder} title="Abrir pasta">
+                <FolderOpen className="size-4" />
+              </Button>
+            </div>
           </Row>
         </Section>
 

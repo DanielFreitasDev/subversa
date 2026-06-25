@@ -178,6 +178,20 @@ export const HELP = {
     note: "Operações que mexem no servidor pedem confirmação e viram um commit.",
   },
 
+  backups: {
+    title: "Backups (pontos de restauração)",
+    intro:
+      "Antes de operações que podem bagunçar sua cópia local (merge, atualizar, trocar de linha, reverter), o app pode tirar uma cópia completa da pasta. Se algo der errado, você restaura e volta exatamente ao estado anterior — como se a operação nunca tivesse acontecido.",
+    points: [
+      "Cada backup é uma cópia fiel da working copy (inclusive o controle do SVN) feita naquele instante.",
+      "“Restaurar” sobrescreve a cópia local atual com a do backup — tudo o que você fez depois é descartado.",
+      "“Excluir” remove o backup do disco para liberar espaço.",
+      "Por padrão, o app guarda os 5 backups mais recentes de cada projeto e apaga os mais antigos.",
+    ],
+    note: "Restaurar reescreve a pasta inteira; por isso pede que você digite o nome do projeto para confirmar.",
+    noteTone: "warn",
+  },
+
   // ---- Configurações ------------------------------------------------------
   settingsAuth: {
     title: "Servidor & autenticação",
@@ -218,6 +232,20 @@ export const HELP = {
       "“Modo verboso”: mostra o comando svn equivalente a cada ação — útil para aprender ou conferir.",
       "“Ferramenta de diff externa”: o programa aberto para comparar/resolver arquivos (ex.: meld, kdiff3).",
     ],
+  },
+
+  settingsBackups: {
+    title: "Pontos de restauração (backup)",
+    intro:
+      "Controla se o app oferece um backup da sua cópia local antes de operações destrutivas (merge, atualizar, trocar de linha, reverter).",
+    points: [
+      "“Perguntar a cada vez”: antes de cada operação, você escolhe se quer o backup. (Recomendado.)",
+      "“Sempre”: cria o backup automaticamente, sem perguntar.",
+      "“Desligado”: nunca oferece backup.",
+      "“Quantos manter”: backups antigos além desse número são apagados sozinhos (0 = manter todos).",
+      "“Pasta”: onde os backups ficam. Vazio = uma pasta de cache do sistema.",
+    ],
+    note: "Cada backup é uma cópia completa da pasta — pode ocupar bastante disco em projetos grandes.",
   },
 
   setupHost: {

@@ -20,7 +20,14 @@ export interface CommandOutput {
  * `op-progress`. Commit/import ficam de fora: imprimem o progresso em português
  * e contá-los exigiria parsear texto traduzido (contra a convenção do projeto).
  */
-export type TransferOp = "checkout" | "update" | "switch" | "merge" | "export";
+export type TransferOp =
+  | "checkout"
+  | "update"
+  | "switch"
+  | "merge"
+  | "export"
+  | "backup"
+  | "restore";
 
 /**
  * Progresso de uma operação de transferência em andamento (evento `op-progress`).
@@ -38,6 +45,26 @@ export interface OpProgress {
   path: string;
   /** `true` no evento final (sucesso ou erro) — a UI usa para remover o cartão. */
   done: boolean;
+}
+
+/**
+ * Um ponto de restauração (backup) de uma working copy: cópia completa da pasta
+ * (com o `.svn`) feita antes de uma operação destrutiva, para poder voltar ao
+ * estado exato anterior. Espelha `BackupEntry` do Rust.
+ */
+export interface BackupEntry {
+  id: string;
+  wcPath: string;
+  wcName: string;
+  /** Operação que motivou o backup (ex.: `merge`, `update`, `switch`). */
+  op: string;
+  url: string;
+  branchLabel: string;
+  revision: string;
+  /** Momento da criação, em epoch milissegundos (UTC). */
+  createdMs: number;
+  sizeBytes: number;
+  fileCount: number;
 }
 
 /** Uma entrada do registro de comandos (auditoria do que o app rodou no `svn`). */
@@ -210,4 +237,13 @@ export interface AppConfig {
   externalDiffTool: string;
   verbose: boolean;
   confirmServerOps: boolean;
+  /**
+   * Como oferecer um backup antes de operações destrutivas: `ask` (pergunta a
+   * cada vez), `always` (faz sempre, sem perguntar) ou `off` (nunca oferece).
+   */
+  backupMode: "ask" | "always" | "off";
+  /** Quantos backups manter por working copy (0 = ilimitado). */
+  backupKeep: number;
+  /** Pasta-base dos backups. Vazio = `~/.cache/subversa/backups`. */
+  backupDir: string;
 }

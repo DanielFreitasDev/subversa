@@ -8,6 +8,7 @@ import { invoke } from "@tauri-apps/api/core";
 
 import type {
   AppConfig,
+  BackupEntry,
   BlameLine,
   CommandLogEntry,
   CommandOutput,
@@ -149,6 +150,33 @@ export const makeDir = (url: string, message: string) =>
 /** Move/renomeia um nó no repositório (`svn move --parents`). */
 export const moveRemote = (srcUrl: string, dstUrl: string, message: string) =>
   invoke<CommandOutput>("move_remote", { srcUrl, dstUrl, message });
+
+// --- backups (pontos de restauração) ---------------------------------------
+
+/** Cria um ponto de restauração da working copy antes de uma operação destrutiva. */
+export const createBackup = (
+  path: string,
+  op: string,
+  name: string,
+  url: string,
+  revision: string,
+  branchLabel: string,
+) =>
+  invoke<BackupEntry>("create_backup", {
+    req: { path, op, name, url, revision, branchLabel },
+  });
+
+/** Lista todos os pontos de restauração (mais recentes primeiro). */
+export const listBackups = () => invoke<BackupEntry[]>("list_backups");
+
+/** Restaura um backup: reescreve a working copy com a cópia salva. */
+export const restoreBackup = (id: string) =>
+  invoke<CommandOutput>("restore_backup", { id });
+
+export const deleteBackup = (id: string) => invoke<void>("delete_backup", { id });
+
+/** Caminho da pasta de backups (para abrir no gerenciador de arquivos). */
+export const backupsDir = () => invoke<string>("backups_dir");
 
 // --- config + utilidades ---------------------------------------------------
 
