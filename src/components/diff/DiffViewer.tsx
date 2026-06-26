@@ -1,10 +1,11 @@
 import { useMemo, useRef, useState } from "react";
-import { Columns2, FoldVertical, Rows3, UnfoldVertical, WrapText } from "lucide-react";
+import { Columns2, FoldVertical, Maximize2, Rows3, UnfoldVertical, WrapText } from "lucide-react";
 
 import { parseUnifiedDiff, type DiffFile } from "@/lib/diff";
 import { HELP } from "@/lib/help";
 import { cn } from "@/lib/utils";
 import { HelpPopover } from "@/components/ui/HelpPopover";
+import { Modal } from "@/components/ui/Modal";
 import { Segmented } from "@/components/ui/Segmented";
 import { useUiStore, type DiffKind, type DiffMode } from "@/store/ui";
 
@@ -23,6 +24,11 @@ export interface DiffViewerProps {
   onOpenExternal?: () => void;
   /** Resolve o conteúdo de referência de um arquivo p/ expandir contexto. */
   onExpandContext?: (file: DiffFile) => Promise<ContentRef | null>;
+  /** Mostra o botão de abrir em janela ampliada (off na cópia já ampliada). */
+  expandable?: boolean;
+  /** Título/subtítulo da janela ampliada (padrão: "Diferenças" + caminho). */
+  title?: React.ReactNode;
+  subtitle?: React.ReactNode;
 }
 
 /** Acha o ancestral rolável mais próximo (a área de scroll que contém o diff). */
@@ -55,8 +61,12 @@ export function DiffViewer({
   externalTool,
   onOpenExternal,
   onExpandContext,
+  expandable = true,
+  title,
+  subtitle,
 }: DiffViewerProps) {
   const files = useMemo(() => parseUnifiedDiff(text), [text]);
+  const [expanded, setExpanded] = useState(false);
   // Modo padrão pela natureza do diff: novo → "Unificado", alterado → "Lado a
   // lado". Um diff com vários arquivos só conta como novo se todos forem novos.
   const kind: DiffKind = files.length > 0 && files.every((f) => f.added) ? "added" : "modified";
@@ -135,6 +145,7 @@ export function DiffViewer({
   };
 
   return (
+    <>
     <div
       ref={containerRef}
       tabIndex={0}
@@ -156,10 +167,10 @@ export function DiffViewer({
           <button
             onClick={() => onToggleIgnoreWs(!ignoreWs)}
             className={cn(
-              "flex h-7 items-center gap-1.5 rounded-md border px-2.5 text-xs font-medium transition-colors",
+              "flex h-7 items-center gap-1.5 rounded-lg border px-2.5 text-xs font-medium transition-colors",
               ignoreWs
                 ? "border-brand/40 bg-brand/10 text-brand"
-                : "border-line text-muted hover:text-ink",
+                : "border-line/80 text-muted hover:bg-panel-2 hover:text-ink",
             )}
             title="Ignorar diferenças de espaço em branco"
           >
@@ -177,10 +188,19 @@ export function DiffViewer({
           {files.length > 1 && (
             <button
               onClick={toggleCollapseAll}
-              className="flex size-7 items-center justify-center rounded-md border border-line text-faint transition-colors hover:text-ink"
+              className="flex size-7 items-center justify-center rounded-md border border-line text-faint transition-colors hover:bg-panel-2 hover:text-ink"
               title={allCollapsed ? "Expandir todos" : "Recolher todos"}
             >
               {allCollapsed ? <UnfoldVertical className="size-3.5" /> : <FoldVertical className="size-3.5" />}
+            </button>
+          )}
+          {expandable && (
+            <button
+              onClick={() => setExpanded(true)}
+              className="flex size-7 items-center justify-center rounded-md border border-line text-faint transition-colors hover:bg-panel-2 hover:text-ink"
+              title="Abrir em janela ampliada"
+            >
+              <Maximize2 className="size-3.5" />
             </button>
           )}
           <HelpPopover content={HELP.diff} />
@@ -204,5 +224,30 @@ export function DiffViewer({
         );
       })}
     </div>
+
+      {expandable && (
+        <Modal
+          open={expanded}
+          onClose={() => setExpanded(false)}
+          className="max-w-[94vw]"
+          icon={<Columns2 className="size-5" />}
+          title={title ?? "Diferenças"}
+          description={subtitle ?? (files.length === 1 ? files[0].path : `${files.length} arquivos`)}
+        >
+          <div className="h-[78vh] overflow-auto">
+            <DiffViewer
+              text={text}
+              mode={forcedMode}
+              ignoreWs={ignoreWs}
+              onToggleIgnoreWs={onToggleIgnoreWs}
+              externalTool={externalTool}
+              onOpenExternal={onOpenExternal}
+              onExpandContext={onExpandContext}
+              expandable={false}
+            />
+          </div>
+        </Modal>
+      )}
+    </>
   );
 }

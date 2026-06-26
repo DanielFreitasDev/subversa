@@ -22,7 +22,7 @@ export function Segmented<T extends string>({
   return (
     <div
       className={cn(
-        "inline-flex items-center gap-0.5 rounded-lg border border-line bg-panel-2 p-0.5",
+        "inline-flex items-center gap-1 rounded-lg border border-line/80 bg-panel-2/70 p-1",
         className,
       )}
     >
@@ -32,12 +32,13 @@ export function Segmented<T extends string>({
           <button
             key={opt.value}
             onClick={() => onChange(opt.value)}
+            aria-pressed={active}
             className={cn(
-              "inline-flex items-center gap-1.5 rounded-md font-medium transition-colors",
+              "inline-flex items-center gap-1.5 rounded-[7px] font-medium transition-all duration-150",
               size === "sm" ? "h-7 px-2.5 text-xs" : "h-8 px-3 text-[13px]",
               active
-                ? "bg-panel-3 text-ink shadow-soft"
-                : "text-muted hover:text-ink",
+                ? "bg-panel-3 text-ink shadow-[0_1px_2px_rgba(0,0,0,0.35)] ring-1 ring-inset ring-line-strong/60"
+                : "text-muted hover:bg-panel-3/45 hover:text-ink",
             )}
           >
             {opt.icon}

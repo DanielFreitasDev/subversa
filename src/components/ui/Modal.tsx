@@ -18,6 +18,11 @@ const SIZES: Record<Size, string> = {
   full: "max-w-[96vw]",
 };
 
+/** Pilha de modais abertos (por token estável). Só o do topo responde ao Esc —
+ *  assim um modal aninhado (ex.: diff ampliado sobre o Histórico) fecha sozinho
+ *  sem derrubar o de baixo junto. */
+const modalStack: object[] = [];
+
 export interface ModalProps {
   open: boolean;
   onClose: () => void;
@@ -48,14 +53,30 @@ export function Modal({
   className,
 }: ModalProps) {
   const dialogRef = useRef<HTMLDivElement>(null);
+  const tokenRef = useRef<object>({});
   const titleId = useId();
   const descId = useId();
   useFocusTrap(dialogRef, open);
 
+  // Entra/sai da pilha de modais ao abrir/fechar (token estável → independe de
+  // re-renders por mudança de `onClose`/`locked`).
+  useEffect(() => {
+    if (!open) return;
+    const token = tokenRef.current;
+    modalStack.push(token);
+    return () => {
+      const i = modalStack.lastIndexOf(token);
+      if (i >= 0) modalStack.splice(i, 1);
+    };
+  }, [open]);
+
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && !locked) onClose();
+      // Só o modal do topo da pilha fecha com Esc.
+      if (e.key === "Escape" && !locked && modalStack[modalStack.length - 1] === tokenRef.current) {
+        onClose();
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
