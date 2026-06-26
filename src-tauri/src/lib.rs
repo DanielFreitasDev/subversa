@@ -55,6 +55,8 @@ pub fn run() {
             svn::commands::get_log,
             svn::commands::incoming,
             svn::commands::list_dir,
+            svn::commands::list_tree,
+            svn::commands::search_content,
             svn::commands::cat_file,
             svn::commands::blame,
             svn::commands::get_url_info,

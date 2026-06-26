@@ -173,9 +173,11 @@ export const HELP = {
     points: [
       "À esquerda ficam as localizações (repositórios) cadastradas; no meio, a árvore de pastas e arquivos.",
       "Selecione um item e use os botões da barra para agir sobre ele (criar pasta, mover, criar branch/tag, comparar, ver histórico, exportar…).",
+      "Expandir tudo / Recolher tudo: abra ou feche a árvore inteira de uma vez (botões da barra de busca) ou só de uma pasta (menu do botão direito).",
+      "Busca: por Nome filtra arquivos e pastas instantaneamente; por Conteúdo procura dentro dos arquivos. Ambas valem para a pasta selecionada (mostrada à direita da busca).",
       "Botão apagado? Passe o mouse para ver por que ele não se aplica ao item selecionado.",
     ],
-    note: "Operações que mexem no servidor pedem confirmação e viram um commit.",
+    note: "A busca por conteúdo baixa cada arquivo do servidor — em pastas grandes pode demorar; prefira buscar dentro de uma subpasta.",
   },
 
   backups: {

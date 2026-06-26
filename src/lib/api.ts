@@ -13,6 +13,7 @@ import type {
   CommandLogEntry,
   CommandOutput,
   ConflictDetails,
+  ContentSearchResult,
   IncomingResult,
   ListEntry,
   LogEntry,
@@ -57,6 +58,13 @@ export const incoming = (path: string, limit?: number) =>
   invoke<IncomingResult>("incoming", { path, limit: limit ?? null });
 
 export const listDir = (url: string) => invoke<ListEntry[]>("list_dir", { url });
+
+/** Listagem recursiva (`svn list -R`): toda a subárvore num só comando. */
+export const listTree = (url: string) => invoke<ListEntry[]>("list_tree", { url });
+
+/** Busca por conteúdo sob `baseUrl` (`svn cat` por arquivo; emite `op-progress`). */
+export const searchContent = (baseUrl: string, query: string) =>
+  invoke<ContentSearchResult>("search_content", { baseUrl, query });
 
 export const catFile = (target: string, revision?: string) =>
   invoke<string>("cat_file", { target, revision: revision ?? null });

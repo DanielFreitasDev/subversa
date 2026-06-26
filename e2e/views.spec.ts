@@ -188,6 +188,32 @@ test.describe("tema escuro", () => {
     await expect(page).toHaveScreenshot("repos.png");
   });
 
+  test("repositórios: expandir tudo abre a árvore inteira", async ({ page }) => {
+    await gotoApp(page);
+    await page.getByRole("button", { name: "Repositórios", exact: true }).click();
+    await page.waitForTimeout(400);
+
+    await page.getByRole("button", { name: "Expandir tudo" }).first().click();
+
+    // Um arquivo aninhado (trunk/src/…) só aparece com a árvore toda expandida.
+    await expect(page.getByText("ProcessoService.java", { exact: true }).first()).toBeVisible();
+  });
+
+  test("repositórios: busca por nome e por conteúdo", async ({ page }) => {
+    await gotoApp(page);
+    await page.getByRole("button", { name: "Repositórios", exact: true }).click();
+    await page.waitForTimeout(400);
+
+    // Busca por nome (filtro instantâneo, com debounce).
+    await page.getByPlaceholder(/Buscar arquivo ou pasta/).fill("Processo");
+    await expect(page.getByText("ProcessoService.java", { exact: true }).first()).toBeVisible();
+
+    // Alterna para conteúdo e dispara a busca.
+    await page.getByRole("button", { name: "Conteúdo", exact: true }).click();
+    await page.getByRole("button", { name: "Buscar", exact: true }).click();
+    await expect(page.getByText(/ocorrência\(s\) em/).first()).toBeVisible();
+  });
+
   test("repositórios mostra bloqueio de arquivo grande", async ({ page }) => {
     await gotoApp(page);
     await page.getByRole("button", { name: "Repositórios", exact: true }).click();

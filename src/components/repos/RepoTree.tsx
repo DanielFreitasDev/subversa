@@ -4,6 +4,7 @@
  * abre o menu de contexto com as ações aplicáveis ao nó.
  */
 
+import { useEffect } from "react";
 import {
   ChevronRight,
   File as FileIcon,
@@ -72,6 +73,7 @@ function NodeRow({
           select(node);
           onContext(node, e);
         }}
+        data-node-url={url}
         className={cn(
           "group flex cursor-pointer items-center gap-1.5 rounded-md py-1.5 pr-2 transition-colors",
           selected ? "bg-panel-3" : "hover:bg-panel-2",
@@ -151,6 +153,22 @@ function Level({ parentUrl, depth, onContext }: { parentUrl: string; depth: numb
 
 export function RepoTree({ onContext }: { onContext: OnContext }) {
   const location = useRepoBrowserStore((s) => s.activeLocation);
+  const pendingReveal = useRepoBrowserStore((s) => s.pendingReveal);
+  const consumeReveal = useRepoBrowserStore((s) => s.consumeReveal);
+
+  // Após uma busca por nome, rola o nó revelado até o centro (uma vez). Espera um
+  // frame para os ancestrais recém-expandidos renderizarem.
+  useEffect(() => {
+    if (!pendingReveal) return;
+    const id = requestAnimationFrame(() => {
+      const row = Array.from(
+        document.querySelectorAll<HTMLElement>("[data-node-url]"),
+      ).find((el) => el.dataset.nodeUrl === pendingReveal);
+      row?.scrollIntoView({ block: "center" });
+      consumeReveal();
+    });
+    return () => cancelAnimationFrame(id);
+  }, [pendingReveal, consumeReveal]);
 
   if (!location) {
     return (

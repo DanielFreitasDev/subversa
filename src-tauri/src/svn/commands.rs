@@ -604,6 +604,169 @@ pub async fn list_dir(url: String, state: State<'_, AppState>) -> Result<Vec<Lis
     parser::parse_list(&xml)
 }
 
+/// Listagem RECURSIVA de uma URL (`svn list -R`): toda a subárvore numa única
+/// ida ao servidor. Sob `-R`, o `<name>` de cada entrada vem como caminho
+/// relativo à URL (`pasta/sub/arq.txt`) e cada pasta também é listada — o
+/// frontend reconstrói os filhos por pasta a partir disso. Usado por "Expandir
+/// tudo" e pela busca por nome.
+#[tauri::command]
+pub async fn list_tree(url: String, state: State<'_, AppState>) -> Result<Vec<ListEntry>, String> {
+    let (mode, cfg) = config_snapshot(&state);
+    validate_remote_url_for_read(&url, &cfg)?;
+    let xml = run_checked_limited(
+        &["list", "-R", "--xml", "--non-interactive", "--", &url],
+        None,
+        mode,
+        LIMIT_DEFAULT,
+    )
+    .await?;
+    let entries = parser::parse_list(&xml)?;
+    // Descarta entradas sem nome (defensivo: a entrada-raiz pode vir vazia).
+    Ok(entries.into_iter().filter(|e| !e.name.is_empty()).collect())
+}
+
+// Tetos da busca por conteúdo: cada arquivo é baixado por `svn cat` via SSH e
+// isso custa caro. Os limites mantêm a varredura rápida e o payload são para a UI.
+const SEARCH_MAX_FILE_BYTES: u64 = 1024 * 1024; // 1 MiB: ignora arquivos grandes/não-fonte
+const SEARCH_MAX_FILES_SCANNED: u64 = 1000; // teto de arquivos baixados
+const SEARCH_MAX_MATCHES_PER_FILE: usize = 50;
+const SEARCH_MAX_TOTAL_MATCHES: usize = 1000;
+const SEARCH_SNIPPET_MAX_CHARS: usize = 240;
+
+/// Extensões tratadas como binárias — puladas sem baixar (buscar texto não faz sentido).
+const SEARCH_BINARY_EXTS: &[&str] = &[
+    "jpg", "jpeg", "png", "gif", "bmp", "ico", "webp", "svg", "pdf", "zip", "jar", "war", "ear",
+    "class", "so", "dll", "exe", "bin", "o", "a", "tar", "gz", "tgz", "bz2", "7z", "rar", "mp3",
+    "mp4", "mov", "avi", "mkv", "wav", "ogg", "woff", "woff2", "ttf", "otf", "eot",
+];
+
+/// `true` se o nome (possivelmente percent-encodado) tem extensão na denylist binária.
+fn has_binary_ext(name: &str) -> bool {
+    match name.rsplit('.').next() {
+        Some(ext) if ext.len() < name.len() => {
+            SEARCH_BINARY_EXTS.contains(&ext.to_ascii_lowercase().as_str())
+        }
+        _ => false,
+    }
+}
+
+/// `true` se o conteúdo parece binário (NUL nos primeiros 8 KB) — mesma heurística
+/// do editor de conflitos.
+fn looks_binary(s: &str) -> bool {
+    s.as_bytes().iter().take(8192).any(|&b| b == 0)
+}
+
+/// Busca por CONTEÚDO sob uma URL-base: enumera os arquivos (`svn list -R`) e baixa
+/// cada um (`svn cat`) procurando o termo, linha a linha (case-insensitive). Pula
+/// binários (extensão + NUL) e arquivos grandes, com tetos de arquivos e de
+/// ocorrências. Emite progresso pelo canal `op-progress` (op `"search"`) para a
+/// barra de busca mostrar "Verificando… N arquivos".
+#[tauri::command]
+pub async fn search_content(
+    base_url: String,
+    query: String,
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<ContentSearchResult, String> {
+    let (mode, cfg) = config_snapshot(&state);
+    validate_remote_url_for_read(&base_url, &cfg)?;
+    let needle = query.trim().to_lowercase();
+    if needle.chars().count() < 2 {
+        return Err("digite ao menos 2 caracteres para buscar por conteúdo.".into());
+    }
+
+    // Enumera a subárvore uma vez (mesmo `svn list -R` da expansão).
+    let xml = run_checked_limited(
+        &["list", "-R", "--xml", "--non-interactive", "--", &base_url],
+        None,
+        mode,
+        LIMIT_DEFAULT,
+    )
+    .await?;
+    let entries = parser::parse_list(&xml)?;
+
+    let id = next_op_id();
+    emit_op_progress(&app, id, "search", 0, "", false);
+
+    let mut matches: Vec<SearchMatch> = Vec::new();
+    let mut files_scanned: u64 = 0;
+    let mut files_matched: u64 = 0;
+    let mut truncated = false;
+    let mut last_emit = Instant::now();
+
+    for e in entries {
+        if e.kind != "file" || e.name.is_empty() || has_binary_ext(&e.name) {
+            continue;
+        }
+        if e.size.map(|s| s > SEARCH_MAX_FILE_BYTES).unwrap_or(false) {
+            continue;
+        }
+        if files_scanned >= SEARCH_MAX_FILES_SCANNED || matches.len() >= SEARCH_MAX_TOTAL_MATCHES {
+            truncated = true;
+            break;
+        }
+
+        let file_url = format!("{base_url}/{}", e.name);
+        let text = match run_checked_limited(
+            &["cat", "--non-interactive", "--", &file_url],
+            None,
+            mode,
+            LIMIT_CAT_FILE,
+        )
+        .await
+        {
+            Ok(t) => t,
+            Err(_) => continue, // arquivo ilegível/removido: pula, não aborta a busca
+        };
+        files_scanned += 1;
+
+        if !looks_binary(&text) {
+            let mut file_hits = 0usize;
+            for (i, raw) in text.lines().enumerate() {
+                if !raw.to_lowercase().contains(&needle) {
+                    continue;
+                }
+                let trimmed = raw.trim();
+                let snippet = if trimmed.chars().count() > SEARCH_SNIPPET_MAX_CHARS {
+                    let clipped: String = trimmed.chars().take(SEARCH_SNIPPET_MAX_CHARS).collect();
+                    format!("{clipped}…")
+                } else {
+                    trimmed.to_string()
+                };
+                matches.push(SearchMatch {
+                    path: e.name.clone(),
+                    line: (i as u64) + 1,
+                    snippet,
+                });
+                file_hits += 1;
+                if file_hits >= SEARCH_MAX_MATCHES_PER_FILE
+                    || matches.len() >= SEARCH_MAX_TOTAL_MATCHES
+                {
+                    truncated = true;
+                    break;
+                }
+            }
+            if file_hits > 0 {
+                files_matched += 1;
+            }
+        }
+
+        let now = Instant::now();
+        if now.duration_since(last_emit) >= PROGRESS_INTERVAL {
+            last_emit = now;
+            emit_op_progress(&app, id, "search", files_scanned, &e.name, false);
+        }
+    }
+
+    emit_op_progress(&app, id, "search", files_scanned, "", true);
+    Ok(ContentSearchResult {
+        matches,
+        files_scanned,
+        files_matched,
+        truncated,
+    })
+}
+
 /// Conteúdo de um arquivo do servidor/revisão (`svn cat`).
 #[tauri::command]
 pub async fn cat_file(

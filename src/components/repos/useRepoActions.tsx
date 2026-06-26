@@ -7,6 +7,8 @@
 
 import { useCallback } from "react";
 import {
+  ChevronsDownUp,
+  ChevronsUpDown,
   Download,
   Eye,
   FolderDown,
@@ -51,6 +53,8 @@ export function useRepoActions(): (node: RepoNode | null) => MenuItem[] {
   const select = useRepoBrowserStore((s) => s.select);
   const setActiveLocation = useRepoBrowserStore((s) => s.setActiveLocation);
   const openDialog = useRepoBrowserStore((s) => s.openDialog);
+  const expandSubtree = useRepoBrowserStore((s) => s.expandSubtree);
+  const collapseSubtree = useRepoBrowserStore((s) => s.collapseSubtree);
   const setCheckout = useUiStore((s) => s.setCheckout);
   const roots = useConfigStore((s) => s.config?.repoRoots ?? []);
   const saveConfig = useConfigStore((s) => s.save);
@@ -145,6 +149,23 @@ export function useRepoActions(): (node: RepoNode | null) => MenuItem[] {
           onSelect: () => select(node),
         },
         {
+          id: "expandAll",
+          label: "Expandir tudo",
+          icon: <ChevronsUpDown className="size-4" />,
+          separatorBefore: true,
+          disabled: !!onlyDir,
+          disabledReason: onlyDir,
+          onSelect: () => expandSubtree(node.url),
+        },
+        {
+          id: "collapseAll",
+          label: "Recolher tudo",
+          icon: <ChevronsDownUp className="size-4" />,
+          disabled: !!onlyDir,
+          disabledReason: onlyDir,
+          onSelect: () => collapseSubtree(node.url),
+        },
+        {
           id: "checkout",
           label: "Checkout (baixar)…",
           icon: <Download className="size-4" />,
@@ -234,6 +255,16 @@ export function useRepoActions(): (node: RepoNode | null) => MenuItem[] {
         },
       ];
     },
-    [roots, openDialog, select, setCheckout, refresh, removeNode, discardLocation],
+    [
+      roots,
+      openDialog,
+      select,
+      setCheckout,
+      refresh,
+      removeNode,
+      discardLocation,
+      expandSubtree,
+      collapseSubtree,
+    ],
   );
 }

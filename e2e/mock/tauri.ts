@@ -20,6 +20,8 @@ export interface MockData {
   log: Record<string, unknown>[];
   branchList: Record<string, unknown>[];
   rootList: Record<string, unknown>[];
+  treeList: Record<string, unknown>[];
+  contentSearch: Record<string, unknown>;
   commandLog: Record<string, unknown>[];
   conflictDetails: Record<string, unknown>;
   backups: Record<string, unknown>[];
@@ -162,6 +164,32 @@ export function buildFixtures(theme: Theme): MockData {
     { name: "pom.xml", kind: "file", size: 4096, revision: "4795", author: "ana.costa", date: "2026-06-17T13:25:00.000Z" },
     { name: "README.md", kind: "file", size: 6 * 1024 * 1024, revision: "4790", author: "maria.silva", date: "2026-06-16T10:00:00.000Z" },
   ];
+  // Listagem recursiva (`svn list -R`): nomes são caminhos relativos. Inclui uma
+  // pasta vazia (`trunk/vazio`) e uma com acento/espaço para exercitar a busca.
+  const tE = (name: string, kind: "dir" | "file", size: number | null = kind === "dir" ? null : 2048) =>
+    ({ name, kind, size, revision: "4821", author: "daniel.freitas", date: "2026-06-22T18:30:00.000Z" });
+  const treeList = [
+    tE("trunk", "dir"),
+    tE("trunk/pom.xml", "file", 4096),
+    tE("trunk/src", "dir"),
+    tE("trunk/src/ProcessoService.java", "file"),
+    tE("trunk/vazio", "dir"),
+    tE("branches", "dir"),
+    tE("branches/issue_1234", "dir"),
+    tE("branches/issue_1234/README.md", "file"),
+    tE("Relatórios Gerais", "dir"),
+    tE("Relatórios Gerais/índice.txt", "file"),
+  ];
+  const contentSearch = {
+    matches: [
+      { path: "trunk/src/ProcessoService.java", line: 12, snippet: "  public class ProcessoService {" },
+      { path: "trunk/src/ProcessoService.java", line: 27, snippet: "    // calcula o prazo do processo" },
+      { path: "branches/issue_1234/README.md", line: 3, snippet: "Serviço de processo da issue 1234." },
+    ],
+    filesScanned: 7,
+    filesMatched: 2,
+    truncated: false,
+  };
 
   // Registro de comandos: horários em UTC (a spec fixa o fuso em UTC-3 para o
   // screenshot ser determinístico). Um erro no fim cobre o realce de falha.
@@ -274,7 +302,8 @@ export function buildFixtures(theme: Theme): MockData {
   ];
 
   return {
-    config, wcs, status, diff, log, branchList, rootList, commandLog, conflictDetails, backups,
+    config, wcs, status, diff, log, branchList, rootList, treeList, contentSearch,
+    commandLog, conflictDetails, backups,
   };
 }
 
@@ -319,6 +348,15 @@ export function tauriInit(fx: MockData) {
         }
         return /branches/i.test(url) ? fx.branchList : fx.rootList;
       }
+      case "list_tree": {
+        const url = String((args && args.url) || "");
+        if (url.indexOf("/getran") >= 0) {
+          throw "leitura remota bloqueada: URL fora das localizações configuradas. Cadastre a raiz em Configurações antes de usar esta URL.";
+        }
+        return fx.treeList;
+      }
+      case "search_content":
+        return fx.contentSearch;
       case "cat_file":
         return "package br.tjsc.sna.processo;\n\npublic class ProcessoService {\n  // ...\n}\n";
       case "conflict_details":

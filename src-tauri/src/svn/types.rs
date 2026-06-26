@@ -261,6 +261,28 @@ pub struct ListEntry {
     pub date: Option<String>,
 }
 
+/// Uma ocorrência da busca por conteúdo (`search_content`): arquivo, linha e o
+/// trecho casado. `path` é relativo à URL-base buscada (o frontend remonta a URL
+/// a partir dos nomes literais, como no resto do navegador).
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SearchMatch {
+    pub path: String,
+    pub line: u64,
+    pub snippet: String,
+}
+
+/// Resultado da busca por conteúdo. `truncated` indica que algum teto foi
+/// atingido (arquivos varridos / ocorrências) e há mais por achar.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ContentSearchResult {
+    pub matches: Vec<SearchMatch>,
+    pub files_scanned: u64,
+    pub files_matched: u64,
+    pub truncated: bool,
+}
+
 /// Uma linha de `svn blame` (autoria por linha).
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]

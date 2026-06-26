@@ -141,7 +141,7 @@ function ContentView({
   return (
     <pre className="hl-code selectable min-w-full px-0 py-2 font-mono text-[12px] leading-relaxed">
       {lines.slice(0, MAX_LINES).map((ln, i) => (
-        <div key={i} className="flex hover:bg-panel-2/50">
+        <div key={i} data-line={i + 1} className="flex hover:bg-panel-2/50">
           <span className="select-none px-3 text-right text-faint/60" style={{ minWidth: 56 }}>
             {i + 1}
           </span>
@@ -196,7 +196,14 @@ function BlameView({
   );
 }
 
-export function FilePreview({ node }: { node: RepoNode }) {
+export function FilePreview({
+  node,
+  jump,
+}: {
+  node: RepoNode;
+  /** Pular para uma linha e semear a busca (vindo da busca por conteúdo). */
+  jump?: { line: number; query: string };
+}) {
   const [tab, setTab] = useState<Tab>("content");
   const [text, setText] = useState<string | null>(null);
   const [blame, setBlame] = useState<BlameLine[] | null>(null);
@@ -311,6 +318,19 @@ export function FilePreview({ node }: { node: RepoNode }) {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
+
+  // Pular para a linha pedida (vindo da busca por conteúdo): semeia a query
+  // (reaproveita o realce) e rola até a linha assim que o conteúdo renderizar.
+  useEffect(() => {
+    if (!jump) return;
+    setTab("content");
+    setFindOpen(true);
+    setQuery(jump.query);
+    if (text == null) return; // ainda carregando — rola quando o texto chegar
+    const row = scrollRef.current?.querySelector<HTMLElement>(`[data-line="${jump.line}"]`);
+    row?.scrollIntoView({ block: "center", inline: "nearest" });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jump?.line, jump?.query, text]);
 
   const closeFind = () => {
     setFindOpen(false);

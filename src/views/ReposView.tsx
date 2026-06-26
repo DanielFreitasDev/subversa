@@ -15,8 +15,11 @@ import { Empty } from "@/components/ui/Empty";
 import { FilePreview } from "@/components/repos/FilePreview";
 import { RepoBreadcrumb } from "@/components/repos/RepoBreadcrumb";
 import { RepoLocationsSidebar } from "@/components/repos/RepoLocationsSidebar";
+import { RepoSearchBar } from "@/components/repos/RepoSearchBar";
+import { RepoSearchResults } from "@/components/repos/RepoSearchResults";
 import { RepoToolbar } from "@/components/repos/RepoToolbar";
 import { RepoTree } from "@/components/repos/RepoTree";
+import { useRepoSearch } from "@/components/repos/useRepoSearch";
 import { copyUrl, useRepoActions } from "@/components/repos/useRepoActions";
 import type { UrlInfo } from "@/lib/types";
 import { decodeUrl, formatAbsolute, formatRelative } from "@/lib/utils";
@@ -149,10 +152,12 @@ export function ReposView() {
   const selected = useRepoBrowserStore((s) => s.selected);
   const detailsCollapsed = useRepoBrowserStore((s) => s.detailsCollapsed);
   const detailsWidth = useRepoBrowserStore((s) => s.detailsWidth);
+  const previewJump = useRepoBrowserStore((s) => s.previewJump);
   const setActiveLocation = useRepoBrowserStore((s) => s.setActiveLocation);
   const refreshAll = useRepoBrowserStore((s) => s.refreshAll);
   const openDialog = useRepoBrowserStore((s) => s.openDialog);
   const actionsFor = useRepoActions();
+  const search = useRepoSearch();
   const ctx = useContextMenu();
 
   // Seleciona a primeira localização ao abrir (mostra conteúdo de imediato).
@@ -196,8 +201,13 @@ export function ReposView() {
       <div className="flex min-w-0 flex-1 flex-col">
         <RepoToolbar />
         <RepoBreadcrumb />
+        <RepoSearchBar search={search} />
         <div className="flex min-h-0 flex-1">
-          <RepoTree onContext={onContext} />
+          {search.active ? (
+            <RepoSearchResults search={search} />
+          ) : (
+            <RepoTree onContext={onContext} />
+          )}
           {!detailsCollapsed && (
             <>
               <ResizeHandle />
@@ -207,7 +217,15 @@ export function ReposView() {
               >
                 {selected ? (
                   selected.kind === "file" ? (
-                    <FilePreview key={selected.url} node={selected} />
+                    <FilePreview
+                      key={selected.url}
+                      node={selected}
+                      jump={
+                        previewJump && previewJump.url === selected.url
+                          ? { line: previewJump.line, query: previewJump.query }
+                          : undefined
+                      }
+                    />
                   ) : (
                     <NodeDetails key={selected.url} node={selected} />
                   )

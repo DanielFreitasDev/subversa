@@ -27,7 +27,11 @@ export type TransferOp =
   | "merge"
   | "export"
   | "backup"
-  | "restore";
+  | "restore"
+  // Varredura da busca por conteúdo (`search_content`): reaproveita o canal só
+  // para o contador "N arquivos verificados". Não é transferência e, de
+  // propósito, NÃO entra no `PANEL_OPS` do ActivityPanel (aparece inline na busca).
+  | "search";
 
 /**
  * Progresso de uma operação de transferência em andamento (evento `op-progress`).
@@ -189,6 +193,22 @@ export interface ListEntry {
   revision: string | null;
   author: string | null;
   date: string | null;
+}
+
+/** Uma ocorrência da busca por conteúdo. `path` é relativo à URL-base buscada. */
+export interface SearchMatch {
+  path: string;
+  line: number;
+  snippet: string;
+}
+
+/** Resultado da busca por conteúdo (`search_content`). */
+export interface ContentSearchResult {
+  matches: SearchMatch[];
+  filesScanned: number;
+  filesMatched: number;
+  /** Algum teto foi atingido (arquivos/ocorrências) — há mais por achar. */
+  truncated: boolean;
 }
 
 export interface BlameLine {
