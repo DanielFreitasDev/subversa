@@ -133,6 +133,10 @@ export function buildFixtures(theme: Theme): MockData {
       paths: [
         { action: "M", path: "/sna/trunk/src/processo/ProcessoDAO.java", kind: "file", copyfromPath: null, copyfromRev: null },
         { action: "D", path: "/sna/trunk/src/legacy/OldDAO.java", kind: "file", copyfromPath: null, copyfromRev: null },
+        // Arquivo adicionado por cópia (svn copy): o `svn diff` o compara com a
+        // origem e sai vazio — a UI deve mostrar o conteúdo novo inteiro.
+        { action: "A", path: "/sna/trunk/src/processo/ProcessoServiceLegado.java", kind: "file",
+          copyfromPath: "/sna/branches/ISSUES 2026/06 - JUNHO/processo/ProcessoService.java", copyfromRev: "4808" },
       ] },
     { revision: "4801", author: "daniel.freitas", date: "2026-06-18T09:12:00.000Z",
       message: "Branch para issue_1234",

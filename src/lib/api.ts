@@ -85,8 +85,8 @@ export const svnAdd = (paths: string[]) => invoke<CommandOutput>("svn_add", { pa
 export const revert = (paths: string[], recursive = false) =>
   invoke<CommandOutput>("revert", { paths, recursive });
 
-export const remove = (paths: string[], keepLocal = false) =>
-  invoke<CommandOutput>("remove", { paths, keepLocal });
+export const remove = (paths: string[], keepLocal = false, force = false) =>
+  invoke<CommandOutput>("remove", { paths, keepLocal, force });
 
 export const createBranch = (sourceUrl: string, branchUrl: string, message: string) =>
   invoke<CommandOutput>("create_branch", { sourceUrl, branchUrl, message });

@@ -3,11 +3,14 @@ import {
   AlertTriangle,
   CloudDownload,
   ExternalLink,
+  FilePlus2,
   FolderOpen,
   GitMerge,
   Loader2,
+  RefreshCw,
   RotateCcw,
   ShieldAlert,
+  Trash2,
   Upload,
 } from "lucide-react";
 
@@ -48,6 +51,8 @@ function StatusRow({
   highlighted,
   onToggle,
   onHighlight,
+  onAdd,
+  onDelete,
   onRevert,
   onReveal,
   onResolve,
@@ -57,11 +62,14 @@ function StatusRow({
   highlighted: boolean;
   onToggle: () => void;
   onHighlight: () => void;
+  onAdd: () => void;
+  onDelete: () => void;
   onRevert: () => void;
   onReveal: () => void;
   onResolve: () => void;
 }) {
   const isConflict = entry.item === "conflicted" || entry.treeConflicted;
+  const isUnversioned = entry.item === "unversioned";
   const dir = dirName(entry.relPath);
   const name = baseName(entry.relPath);
   return (
@@ -107,7 +115,33 @@ function StatusRow({
             </button>
           </Tooltip>
         )}
-        {entry.item !== "unversioned" && (
+        {isUnversioned && (
+          <>
+            <Tooltip label="Adicionar ao SVN">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onAdd();
+                }}
+                className="flex size-6 items-center justify-center rounded text-add hover:bg-add/15"
+              >
+                <FilePlus2 className="size-3.5" />
+              </button>
+            </Tooltip>
+            <Tooltip label="Excluir do disco">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDelete();
+                }}
+                className="flex size-6 items-center justify-center rounded text-faint hover:bg-danger/15 hover:text-danger"
+              >
+                <Trash2 className="size-3.5" />
+              </button>
+            </Tooltip>
+          </>
+        )}
+        {!isUnversioned && (
           <Tooltip label="Reverter este arquivo">
             <button
               onClick={(e) => {
@@ -205,6 +239,15 @@ function Changes({ wc }: { wc: WorkingCopy }) {
     };
   }, [highlight, wc.path, ignoreWs]);
 
+  // Reconsulta o status local quando a janela volta ao foco: ao editar/criar
+  // arquivos em outro programa e voltar ao Subversa, a lista atualiza sozinha
+  // (sem precisar trocar de aba e voltar).
+  useEffect(() => {
+    const onFocus = () => reload(false);
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, [reload]);
+
   const selectedEntries = entries.filter((e) => checked.has(e.path));
   const selectableEntries = entries.filter(isSelectable);
   const allSelected = selectableEntries.length > 0 && selectableEntries.every((e) => checked.has(e.path));
@@ -234,6 +277,32 @@ function Changes({ wc }: { wc: WorkingCopy }) {
     if (!ok) return;
     const out = await tryRun(() => api.revert(paths, false), "Falha no revert");
     if (out && reportOutput(out, "Alterações revertidas")) {
+      await reload(false);
+      await refreshOne(wc.path);
+    }
+  };
+
+  // Coloca um arquivo novo (não versionado) sob o SVN — passa a "Adicionado".
+  const addToSvn = async (path: string) => {
+    const out = await tryRun(() => api.svnAdd([path]), "Falha ao adicionar ao SVN");
+    if (out && reportOutput(out, "Adicionado ao SVN")) {
+      await reload(false);
+      await refreshOne(wc.path);
+    }
+  };
+
+  // Apaga do disco um arquivo novo (fora do SVN). `svn rm --force` remove o
+  // stray direto do disco; é irreversível, então confirma antes.
+  const deleteUnversioned = async (path: string) => {
+    const ok = await confirm({
+      title: "Excluir do disco?",
+      message: "Este arquivo novo (fora do SVN) será apagado do disco. Não dá para desfazer.",
+      danger: true,
+      confirmLabel: "Excluir",
+    });
+    if (!ok) return;
+    const out = await tryRun(() => api.remove([path], false, true), "Falha ao excluir o arquivo");
+    if (out && reportOutput(out, "Arquivo excluído")) {
       await reload(false);
       await refreshOne(wc.path);
     }
@@ -331,6 +400,11 @@ function Changes({ wc }: { wc: WorkingCopy }) {
           </label>
           <div className="flex items-center gap-1">
             <HelpPopover content={HELP.changes} />
+            <Tooltip label="Atualizar a lista de alterações">
+              <Button variant="ghost" size="icon" onClick={() => reload(false)} disabled={loading}>
+                <RefreshCw className={cn("size-4", loading && "animate-spin")} />
+              </Button>
+            </Tooltip>
             <Tooltip label="Conferir novidades no servidor">
               <Button variant="ghost" size="icon" onClick={checkServer} disabled={checkingServer}>
                 {checkingServer ? (
@@ -372,6 +446,8 @@ function Changes({ wc }: { wc: WorkingCopy }) {
                 highlighted={highlight === e.path}
                 onToggle={() => toggle(e.path)}
                 onHighlight={() => setHighlight(e.path)}
+                onAdd={() => addToSvn(e.path)}
+                onDelete={() => deleteUnversioned(e.path)}
                 onRevert={() => revertPaths([e.path])}
                 onReveal={() => tryRun(() => api.revealInFileManager(e.path), "Não consegui abrir o gerenciador de arquivos")}
                 onResolve={() =>

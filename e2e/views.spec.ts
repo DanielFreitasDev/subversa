@@ -37,6 +37,21 @@ test.describe("tema escuro", () => {
     await expect(page).toHaveScreenshot("changes.png");
   });
 
+  test("alterações: arquivo novo (fora do SVN) pode ser adicionado ou excluído", async ({ page }) => {
+    await gotoApp(page);
+    await openFirstWc(page);
+
+    // A linha do arquivo não versionado revela ações de adicionar/excluir.
+    const row = page.locator(".group").filter({ hasText: "local.properties" }).first();
+    await row.hover();
+    await expect(row.getByRole("button", { name: "Adicionar ao SVN" })).toBeVisible();
+    await expect(row.getByRole("button", { name: "Excluir do disco" })).toBeVisible();
+
+    // Adicionar ao SVN dispara o svn add e confirma por toast.
+    await row.getByRole("button", { name: "Adicionar ao SVN" }).click();
+    await expect(page.getByText("Adicionado ao SVN")).toBeVisible();
+  });
+
   test("editor de conflitos em 3 painéis", async ({ page }) => {
     await gotoApp(page);
     await openFirstWc(page);
@@ -81,6 +96,24 @@ test.describe("tema escuro", () => {
     await expect(page.getByText("Refatora camada de persistência")).toBeVisible();
 
     await expect(page).toHaveScreenshot("history.png");
+  });
+
+  test("histórico: arquivo novo (adicionado por cópia) mostra o conteúdo", async ({ page }) => {
+    await gotoApp(page);
+    await openFirstWc(page);
+    await openTab(page, "Histórico");
+
+    // Seleciona a revisão que adicionou um arquivo por cópia.
+    await page.getByText("Refatora camada de persistência").first().click();
+    // Clica no arquivo adicionado por cópia (ação A com origem).
+    await page.locator("button").filter({ hasText: "ProcessoServiceLegado.java" }).click();
+
+    // Antes mostrava "Sem diferenças."; agora o DiffViewer renderiza 1 arquivo
+    // (o conteúdo novo como adição) em vez do vazio.
+    await expect(page.getByText("Sem diferenças.")).toHaveCount(0);
+    await expect(page.getByText("1 arquivo(s)")).toBeVisible();
+
+    await expect(page).toHaveScreenshot("history-arquivo-novo-por-copia.png");
   });
 
   test("entrada (a receber do servidor)", async ({ page }) => {

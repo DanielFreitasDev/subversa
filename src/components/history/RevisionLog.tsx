@@ -15,7 +15,7 @@ import { Button, IconButton } from "@/components/ui/Button";
 import { ContextMenu, useContextMenu, type MenuItem } from "@/components/ui/ContextMenu";
 import { Empty } from "@/components/ui/Empty";
 import { Loading } from "@/components/ui/Spinner";
-import type { DiffFile } from "@/lib/diff";
+import { buildAddedFileDiff, type DiffFile } from "@/lib/diff";
 import type { LogEntry, LogPath } from "@/lib/types";
 import { toast } from "@/store/toast";
 import { actionMeta, cn, formatAbsolute, formatRelative } from "@/lib/utils";
@@ -133,20 +133,40 @@ export function RevisionDetail({
   // Volta para "revisão inteira" ao trocar de revisão.
   useEffect(() => setSel("all"), [entry.revision]);
 
-  const diffOn = sel === "all" ? target.diffTarget : `${target.repoRoot}${sel.path}`;
+  const selectedPath = sel === "all" ? null : sel;
+  const diffOn = selectedPath ? `${target.repoRoot}${selectedPath.path}` : target.diffTarget;
+
+  // Arquivo adicionado por cópia (`svn copy`): o `svn diff -c REV <arquivo>` o
+  // compara com a origem da cópia e sai vazio (ou só com ajustes pós-cópia), o
+  // que mostrava "Sem diferenças.". Como o IntelliJ, exibimos o conteúdo novo
+  // inteiro — buscado com `svn cat` e formatado como uma adição. Excluímos só
+  // diretórios (`svn cat` não os lê); aceitamos `kind` ausente, com fallback
+  // para o diff normal se o `cat` falhar.
+  const showAsAdded =
+    selectedPath != null &&
+    selectedPath.kind !== "dir" &&
+    !!selectedPath.copyfromPath &&
+    (selectedPath.action === "A" || selectedPath.action === "R");
 
   useEffect(() => {
     let alive = true;
     setLoading(true);
-    api
-      .diffRevision(diffOn, entry.revision, ignoreWs)
+    const fullDiff = () => api.diffRevision(diffOn, entry.revision, ignoreWs);
+    const job =
+      showAsAdded && selectedPath
+        ? api
+            .catFile(diffOn, entry.revision)
+            .then((content) => buildAddedFileDiff(selectedPath.path, content, entry.revision))
+            .catch(fullDiff) // ex.: era um diretório — cai para o diff normal
+        : fullDiff();
+    job
       .then((d) => alive && setDiff(d))
       .catch(() => alive && setDiff(""))
       .finally(() => alive && setLoading(false));
     return () => {
       alive = false;
     };
-  }, [diffOn, entry.revision, ignoreWs]);
+  }, [diffOn, entry.revision, ignoreWs, showAsAdded, selectedPath]);
 
   // Conteúdo de referência (revisão REV) para expandir contexto sob demanda.
   const expandFor = useCallback(
@@ -164,8 +184,6 @@ export function RevisionDetail({
     },
     [sel, target.baseUrl, target.repoRoot, entry.revision],
   );
-
-  const selectedPath = sel === "all" ? null : sel;
 
   return (
     <div className="flex h-full flex-col">

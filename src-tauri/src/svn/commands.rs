@@ -911,6 +911,7 @@ pub async fn revert(
 pub async fn remove(
     paths: Vec<String>,
     keep_local: bool,
+    force: bool,
     state: State<'_, AppState>,
 ) -> Result<CommandOutput, String> {
     if paths.is_empty() {
@@ -920,6 +921,10 @@ pub async fn remove(
     let mut args: Vec<String> = vec!["delete".into()];
     if keep_local {
         args.push("--keep-local".into());
+    }
+    // `--force` permite apagar um arquivo não versionado (stray) do disco.
+    if force {
+        args.push("--force".into());
     }
     args.push("--".into());
     args.extend(paths);
