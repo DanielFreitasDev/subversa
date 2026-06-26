@@ -37,6 +37,18 @@ test.describe("tema escuro", () => {
     await expect(page).toHaveScreenshot("changes.png");
   });
 
+  test("alterações: pastas têm ícone de pasta para diferenciar de arquivos", async ({ page }) => {
+    await gotoApp(page);
+    await openFirstWc(page);
+
+    // A linha de uma pasta exibe o ícone de pasta…
+    const dirRow = page.locator(".group").filter({ hasText: "relatorio" }).first();
+    await expect(dirRow.locator(".lucide-folder")).toBeVisible();
+    // …e um arquivo comum, não.
+    const fileRow = page.locator(".group").filter({ hasText: "ProcessoService.java" }).first();
+    await expect(fileRow.locator(".lucide-folder")).toHaveCount(0);
+  });
+
   test("alterações: arquivo novo (fora do SVN) pode ser adicionado ou excluído", async ({ page }) => {
     await gotoApp(page);
     await openFirstWc(page);
@@ -96,6 +108,19 @@ test.describe("tema escuro", () => {
     await expect(page.getByText("Refatora camada de persistência")).toBeVisible();
 
     await expect(page).toHaveScreenshot("history.png");
+  });
+
+  test("histórico: pastas alteradas têm ícone de pasta", async ({ page }) => {
+    await gotoApp(page);
+    await openFirstWc(page);
+    await openTab(page, "Histórico");
+
+    // A revisão que criou a branch alterou um diretório (kind "dir").
+    await page.getByText("Branch para issue_1234").first().click();
+    // O caminho da pasta exibe o ícone de pasta (o trecho "JUNHO" só aparece no
+    // caminho, não na mensagem — isola o botão do caminho).
+    const dirPath = page.locator("button").filter({ hasText: "JUNHO" }).first();
+    await expect(dirPath.locator(".lucide-folder")).toBeVisible();
   });
 
   test("histórico: arquivo novo (adicionado por cópia) mostra o conteúdo", async ({ page }) => {

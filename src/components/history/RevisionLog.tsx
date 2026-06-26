@@ -5,7 +5,7 @@
  */
 
 import { useCallback, useEffect, useState } from "react";
-import { Copy, FileDiff, History, Pencil, ServerCrash, Undo2 } from "lucide-react";
+import { Copy, FileDiff, Folder, History, Pencil, ServerCrash, Undo2 } from "lucide-react";
 
 import * as api from "@/lib/api";
 import { DiffViewer } from "@/components/diff/DiffViewer";
@@ -271,6 +271,9 @@ export function RevisionDetail({
                 >
                   {p.action}
                 </span>
+                {p.kind === "dir" && (
+                  <Folder className="size-3.5 shrink-0 text-muted" aria-label="pasta" />
+                )}
                 <span className="selectable truncate font-mono text-[12px] text-muted" title={p.path}>
                   {p.path}
                 </span>

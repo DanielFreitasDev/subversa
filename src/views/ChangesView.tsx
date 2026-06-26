@@ -4,6 +4,7 @@ import {
   CloudDownload,
   ExternalLink,
   FilePlus2,
+  Folder,
   FolderOpen,
   GitMerge,
   Loader2,
@@ -90,6 +91,9 @@ function StatusRow({
       <StatusLetter item={entry.item} props={entry.props} />
       <div className="min-w-0 flex-1 leading-tight">
         <div className="flex items-center gap-1.5">
+          {entry.isDir && (
+            <Folder className="size-3.5 shrink-0 text-muted" aria-label="pasta" />
+          )}
           <span className="truncate text-[13px] text-ink">{name}</span>
           {entry.props === "modified" && entry.item !== "modified" && (
             <span className="rounded bg-mod/12 px-1 text-[9px] font-semibold text-mod">props</span>
@@ -503,6 +507,7 @@ function Changes({ wc }: { wc: WorkingCopy }) {
             {highlightEntry ? (
               <div className="flex items-center gap-2">
                 <StatusLetter item={highlightEntry.item} props={highlightEntry.props} />
+                {highlightEntry.isDir && <Folder className="size-4 shrink-0 text-muted" />}
                 <span className="truncate text-[13px] font-medium text-ink">
                   {highlightEntry.relPath}
                 </span>
@@ -526,7 +531,13 @@ function Changes({ wc }: { wc: WorkingCopy }) {
             <Loading label="Gerando diff…" />
           ) : highlightEntry?.item === "unversioned" ? (
             <div className="px-3 py-10 text-center text-sm text-faint">
-              Arquivo novo (fora do SVN). Será adicionado no commit.
+              {highlightEntry.isDir
+                ? "Pasta nova (fora do SVN). Será adicionada no commit."
+                : "Arquivo novo (fora do SVN). Será adicionado no commit."}
+            </div>
+          ) : highlightEntry?.isDir && !diff.trim() ? (
+            <div className="px-3 py-10 text-center text-sm text-faint">
+              Pasta — não há diferenças de conteúdo para mostrar.
             </div>
           ) : (
             <DiffViewer

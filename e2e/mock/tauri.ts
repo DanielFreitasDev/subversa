@@ -92,6 +92,7 @@ export function buildFixtures(theme: Theme): MockData {
       mkEntry({ relPath: "src/processo/ProcessoService.java", item: "modified" }),
       mkEntry({ relPath: "src/processo/ProcessoDAO.java", item: "modified", props: "modified", remoteModified: true }),
       mkEntry({ relPath: "src/util/Datas.java", item: "added" }),
+      mkEntry({ relPath: "src/relatorio", item: "added", isDir: true }),
       mkEntry({ relPath: "docs/CHANGELOG.md", item: "deleted" }),
       mkEntry({ relPath: "config/local.properties", item: "unversioned" }),
       mkEntry({ relPath: "src/merge/Conciliador.java", item: "conflicted" }),
