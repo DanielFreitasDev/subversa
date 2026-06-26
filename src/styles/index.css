@@ -180,56 +180,70 @@
     box-shadow: 0 0 0 3px color-mix(in oklab, var(--color-brand) 18%, transparent);
   }
 
-  /* Realce de sintaxe do diff (lowlight/highlight.js) mapeado nos tokens do tema,
-     para respeitar dark/light sem rebuild. Não importamos nenhum tema do hljs. */
-  .diff-code .hljs-comment,
-  .diff-code .hljs-quote {
+  /* Realce de sintaxe (lowlight/highlight.js) mapeado nos tokens do tema, para
+     respeitar dark/light sem rebuild. Não importamos nenhum tema do hljs. Vale
+     no diff (`.diff-code`) e na pré-visualização de arquivos (`.hl-code`). */
+  :is(.diff-code, .hl-code) .hljs-comment,
+  :is(.diff-code, .hl-code) .hljs-quote {
     color: var(--color-faint);
     font-style: italic;
   }
-  .diff-code .hljs-keyword,
-  .diff-code .hljs-selector-tag,
-  .diff-code .hljs-literal,
-  .diff-code .hljs-built_in,
-  .diff-code .hljs-name,
-  .diff-code .hljs-tag {
+  :is(.diff-code, .hl-code) .hljs-keyword,
+  :is(.diff-code, .hl-code) .hljs-selector-tag,
+  :is(.diff-code, .hl-code) .hljs-literal,
+  :is(.diff-code, .hl-code) .hljs-built_in,
+  :is(.diff-code, .hl-code) .hljs-name,
+  :is(.diff-code, .hl-code) .hljs-tag {
     color: var(--color-brand);
   }
-  .diff-code .hljs-string,
-  .diff-code .hljs-symbol,
-  .diff-code .hljs-bullet,
-  .diff-code .hljs-addition,
-  .diff-code .hljs-regexp {
+  :is(.diff-code, .hl-code) .hljs-string,
+  :is(.diff-code, .hl-code) .hljs-symbol,
+  :is(.diff-code, .hl-code) .hljs-bullet,
+  :is(.diff-code, .hl-code) .hljs-addition,
+  :is(.diff-code, .hl-code) .hljs-regexp {
     color: var(--color-add);
   }
-  .diff-code .hljs-number,
-  .diff-code .hljs-meta,
-  .diff-code .hljs-link {
+  :is(.diff-code, .hl-code) .hljs-number,
+  :is(.diff-code, .hl-code) .hljs-meta,
+  :is(.diff-code, .hl-code) .hljs-link {
     color: var(--color-mod);
   }
-  .diff-code .hljs-title,
-  .diff-code .hljs-section,
-  .diff-code .hljs-selector-id,
-  .diff-code .hljs-selector-class,
-  .diff-code .hljs-type,
-  .diff-code .hljs-attr,
-  .diff-code .hljs-attribute {
+  :is(.diff-code, .hl-code) .hljs-title,
+  :is(.diff-code, .hl-code) .hljs-section,
+  :is(.diff-code, .hl-code) .hljs-selector-id,
+  :is(.diff-code, .hl-code) .hljs-selector-class,
+  :is(.diff-code, .hl-code) .hljs-type,
+  :is(.diff-code, .hl-code) .hljs-attr,
+  :is(.diff-code, .hl-code) .hljs-attribute {
     color: var(--color-info);
   }
-  .diff-code .hljs-variable,
-  .diff-code .hljs-template-variable,
-  .diff-code .hljs-property,
-  .diff-code .hljs-params {
+  :is(.diff-code, .hl-code) .hljs-variable,
+  :is(.diff-code, .hl-code) .hljs-template-variable,
+  :is(.diff-code, .hl-code) .hljs-property,
+  :is(.diff-code, .hl-code) .hljs-params {
     color: var(--color-new);
   }
-  .diff-code .hljs-deletion {
+  :is(.diff-code, .hl-code) .hljs-deletion {
     color: var(--color-del);
   }
-  .diff-code .hljs-emphasis {
+  :is(.diff-code, .hl-code) .hljs-emphasis {
     font-style: italic;
   }
-  .diff-code .hljs-strong {
+  :is(.diff-code, .hl-code) .hljs-strong {
     font-weight: 600;
+  }
+
+  /* Realce da busca no preview de arquivos. Como vem DEPOIS dos `.hljs-*` (mesma
+     especificidade), o casamento ativo vence o empate e escurece o texto para
+     ganhar contraste sobre o âmbar; os demais só recebem um fundo translúcido. */
+  .hl-code .sv-find {
+    border-radius: 2px;
+    background: color-mix(in oklab, var(--color-warn) 28%, transparent);
+  }
+  .hl-code .sv-find-active {
+    border-radius: 2px;
+    background: var(--color-warn);
+    color: #1a1205;
   }
 }
 
