@@ -92,11 +92,13 @@
   body,
   #root {
     height: 100%;
+    /* Fundo dirigido pela variável do tema (claro/escuro em runtime). Sem isso,
+       o canvas atrás das views ficava preso no escuro no tema claro. */
+    background-color: var(--color-canvas);
   }
 
   body {
     margin: 0;
-    background-color: var(--color-canvas);
     color: var(--color-ink);
     font-family: var(--font-sans);
     font-feature-settings: "cv05", "ss03", "calt", "liga";

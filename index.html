@@ -1,5 +1,9 @@
 <!doctype html>
-<html lang="pt-BR" style="background:#090b11;color-scheme:dark">
+<!-- color-scheme:dark dá ao webview um fundo escuro já no primeiro paint (evita
+     flash branco antes do CSS/tema carregar). O fundo de verdade vem de
+     var(--color-canvas) no CSS, então acompanha claro/escuro em runtime — não
+     hardcode a cor aqui (inline venceria a variável do tema e travaria no escuro). -->
+<html lang="pt-BR" style="color-scheme:dark">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
@@ -7,7 +11,7 @@
     <meta name="theme-color" content="#0B1020" />
     <title>Subversa</title>
   </head>
-  <body style="background:#090b11">
+  <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

@@ -250,6 +250,49 @@ test.describe("tema claro", () => {
 
     await expect(page).toHaveScreenshot("settings-light.png");
   });
+
+  // Views que o usuário reportou com o fundo travado no escuro. Capturam o
+  // compositor de commit (textarea), a lista de entrada, o histórico e as
+  // branches no tema claro — garantindo que o canvas acompanha o tema.
+  test("alterações (claro)", async ({ page }) => {
+    await gotoApp(page);
+    await openFirstWc(page);
+
+    await expect(page.getByText("Unificado")).toBeVisible();
+    await expect(page.getByText(/Você está na/)).toBeVisible();
+
+    await expect(page).toHaveScreenshot("changes-light.png");
+  });
+
+  test("entrada (claro)", async ({ page }) => {
+    await gotoApp(page);
+    await openFirstWc(page);
+    await openTab(page, "Entrada");
+
+    await expect(page.getByText(/a receber/).first()).toBeVisible();
+
+    await expect(page).toHaveScreenshot("entrada-light.png");
+  });
+
+  test("histórico (claro)", async ({ page }) => {
+    await gotoApp(page);
+    await openFirstWc(page);
+    await openTab(page, "Histórico");
+
+    await expect(page.getByText("Refatora camada de persistência")).toBeVisible();
+
+    await expect(page).toHaveScreenshot("history-light.png");
+  });
+
+  test("branches (claro)", async ({ page }) => {
+    await gotoApp(page);
+    await openFirstWc(page);
+    await openTab(page, "Branches");
+
+    await expect(page.getByText("issue_1255")).toBeVisible();
+
+    await expect(page).toHaveScreenshot("branches-light.png");
+  });
 });
 
 test.describe("registro de comandos", () => {
