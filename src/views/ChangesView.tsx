@@ -21,6 +21,7 @@ import { ConflictDialog } from "@/components/dialogs/ConflictDialog";
 import { MergeEditor } from "@/components/merge/MergeEditor";
 import { StatusLetter } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
+import { Checkbox } from "@/components/ui/Checkbox";
 import { Loading } from "@/components/ui/Spinner";
 import { Textarea } from "@/components/ui/Field";
 import { Tooltip } from "@/components/ui/Tooltip";
@@ -81,12 +82,10 @@ function StatusRow({
         highlighted ? "bg-panel-3" : "hover:bg-panel-2",
       )}
     >
-      <input
-        type="checkbox"
+      <Checkbox
         checked={checked}
         onClick={(e) => e.stopPropagation()}
         onChange={onToggle}
-        className="size-3.5 shrink-0 accent-brand"
       />
       <StatusLetter item={entry.item} props={entry.props} />
       <div className="min-w-0 flex-1 leading-tight">
@@ -393,12 +392,11 @@ function Changes({ wc }: { wc: WorkingCopy }) {
       {/* Coluna esquerda: lista + compositor */}
       <div className="flex w-[440px] shrink-0 flex-col border-r border-line">
         <div className="flex items-center justify-between gap-2 px-4 py-3">
-          <label className="flex items-center gap-2 text-[13px] font-medium text-ink">
-            <input
-              type="checkbox"
+          <label className="flex cursor-pointer items-center gap-2 text-[13px] font-medium text-ink">
+            <Checkbox
               checked={allSelected}
+              indeterminate={selectedEntries.length > 0 && !allSelected}
               onChange={toggleAll}
-              className="size-3.5 accent-brand"
             />
             {selectedEntries.length}/{selectableEntries.length} selecionados
           </label>
