@@ -24,6 +24,12 @@ export interface DiffFile {
   notes: string[];
   additions: number;
   deletions: number;
+  /**
+   * Arquivo novo (adicionado) — só conteúdo novo, sem base anterior. Detectado
+   * pela forma do próprio diff (`@@ -0,0 …`, sem remoções), independente de
+   * idioma, para escolher o modo de exibição padrão (novo → "Unificado").
+   */
+  added: boolean;
 }
 
 const HUNK_RE = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@(.*)$/;
@@ -37,7 +43,7 @@ export function parseUnifiedDiff(text: string): DiffFile[] {
   let newNo = 0;
 
   const pushFile = (path: string) => {
-    current = { path, binary: false, hunks: [], notes: [], additions: 0, deletions: 0 };
+    current = { path, binary: false, hunks: [], notes: [], additions: 0, deletions: 0, added: false };
     files.push(current);
     hunk = null;
   };
@@ -101,6 +107,14 @@ export function parseUnifiedDiff(text: string): DiffFile[] {
     } else {
       hunk.lines.push({ type: "context", content, oldNumber: oldNo++, newNumber: newNo++ });
     }
+  }
+
+  // Marca arquivos novos: sem remoções e com todo hunk começando em -0 (a forma
+  // `@@ -0,0 +1,N @@` que o `svn diff` usa para adições, igual à de
+  // `buildAddedFileDiff`). Exige ao menos um hunk para não confundir mudanças
+  // só de propriedade/binárias com adição de conteúdo.
+  for (const f of files) {
+    f.added = f.deletions === 0 && f.hunks.length > 0 && f.hunks.every((h) => h.oldStart === 0);
   }
 
   return files;

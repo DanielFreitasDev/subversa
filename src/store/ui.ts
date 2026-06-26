@@ -15,14 +15,25 @@ export type ViewId =
   | "settings";
 
 export type DiffMode = "unified" | "split";
+/** Natureza do arquivo no diff — decide o modo de exibição padrão. */
+export type DiffKind = "added" | "modified";
 
-const DIFF_MODE_KEY = "subversa.diffMode";
+const DIFF_MODE_KEYS: Record<DiffKind, string> = {
+  added: "subversa.diffMode.added",
+  modified: "subversa.diffMode.modified",
+};
+// Padrões pedidos: arquivo novo abre em "Unificado", alterado em "Lado a lado".
+const DIFF_MODE_DEFAULTS: Record<DiffKind, DiffMode> = {
+  added: "unified",
+  modified: "split",
+};
 
-function initialDiffMode(): DiffMode {
+function initialDiffMode(kind: DiffKind): DiffMode {
   try {
-    return localStorage.getItem(DIFF_MODE_KEY) === "split" ? "split" : "unified";
+    const v = localStorage.getItem(DIFF_MODE_KEYS[kind]);
+    return v === "split" || v === "unified" ? v : DIFF_MODE_DEFAULTS[kind];
   } catch {
-    return "unified"; // storage indisponível (modo privativo/quota)
+    return DIFF_MODE_DEFAULTS[kind]; // storage indisponível (modo privativo/quota)
   }
 }
 
@@ -33,15 +44,20 @@ interface UiState {
   /** URL pré-preenchida no checkout (ex.: vinda do navegador de repositórios). */
   checkoutUrl: string | null;
   createBranchOpen: boolean;
-  /** Modo do visualizador de diff, compartilhado entre Alterações e Histórico. */
-  diffMode: DiffMode;
+  /**
+   * Modo do visualizador de diff por natureza do arquivo (compartilhado entre
+   * Alterações, Entrada e Histórico): arquivo novo e arquivo alterado guardam
+   * preferências separadas, cada uma persistida.
+   */
+  diffModeAdded: DiffMode;
+  diffModeModified: DiffMode;
 
   setView: (v: ViewId) => void;
   setPalette: (open: boolean) => void;
   togglePalette: () => void;
   setCheckout: (open: boolean, url?: string | null) => void;
   setCreateBranch: (open: boolean) => void;
-  setDiffMode: (m: DiffMode) => void;
+  setDiffMode: (kind: DiffKind, m: DiffMode) => void;
 }
 
 export const useUiStore = create<UiState>((set) => ({
@@ -50,7 +66,8 @@ export const useUiStore = create<UiState>((set) => ({
   checkoutOpen: false,
   checkoutUrl: null,
   createBranchOpen: false,
-  diffMode: initialDiffMode(),
+  diffModeAdded: initialDiffMode("added"),
+  diffModeModified: initialDiffMode("modified"),
 
   setView: (view) => set({ view }),
   setPalette: (paletteOpen) => set({ paletteOpen }),
@@ -58,12 +75,12 @@ export const useUiStore = create<UiState>((set) => ({
   setCheckout: (checkoutOpen, checkoutUrl = null) =>
     set({ checkoutOpen, checkoutUrl: checkoutOpen ? checkoutUrl : null }),
   setCreateBranch: (createBranchOpen) => set({ createBranchOpen }),
-  setDiffMode: (diffMode) => {
+  setDiffMode: (kind, mode) => {
     try {
-      localStorage.setItem(DIFF_MODE_KEY, diffMode);
+      localStorage.setItem(DIFF_MODE_KEYS[kind], mode);
     } catch {
       /* storage indisponível — ignora a persistência */
     }
-    set({ diffMode });
+    set(kind === "added" ? { diffModeAdded: mode } : { diffModeModified: mode });
   },
 }));

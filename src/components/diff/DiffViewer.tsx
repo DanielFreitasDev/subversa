@@ -6,7 +6,7 @@ import { HELP } from "@/lib/help";
 import { cn } from "@/lib/utils";
 import { HelpPopover } from "@/components/ui/HelpPopover";
 import { Segmented } from "@/components/ui/Segmented";
-import { useUiStore, type DiffMode } from "@/store/ui";
+import { useUiStore, type DiffKind, type DiffMode } from "@/store/ui";
 
 import { FileBlock, type ContentRef } from "./FileBlock";
 
@@ -57,7 +57,10 @@ export function DiffViewer({
   onExpandContext,
 }: DiffViewerProps) {
   const files = useMemo(() => parseUnifiedDiff(text), [text]);
-  const storeMode = useUiStore((s) => s.diffMode);
+  // Modo padrão pela natureza do diff: novo → "Unificado", alterado → "Lado a
+  // lado". Um diff com vários arquivos só conta como novo se todos forem novos.
+  const kind: DiffKind = files.length > 0 && files.every((f) => f.added) ? "added" : "modified";
+  const storeMode = useUiStore((s) => (kind === "added" ? s.diffModeAdded : s.diffModeModified));
   const setDiffMode = useUiStore((s) => s.setDiffMode);
   const mode = forcedMode ?? storeMode;
 
@@ -143,7 +146,7 @@ export function DiffViewer({
         <Segmented<DiffMode>
           size="sm"
           value={mode}
-          onChange={setDiffMode}
+          onChange={(m) => setDiffMode(kind, m)}
           options={[
             { value: "unified", label: "Unificado", icon: <Rows3 className="size-3.5" /> },
             { value: "split", label: "Lado a lado", icon: <Columns2 className="size-3.5" /> },
