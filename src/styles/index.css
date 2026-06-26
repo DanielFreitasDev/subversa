@@ -143,9 +143,13 @@
     user-select: text;
   }
 
+  /* Contorno de foco por DENTRO do elemento (offset negativo): em telas que
+     recortam o overflow (ex.: a lista de projetos na sidebar, com overflow-y),
+     um contorno externo vazaria a borda e pareceria sobreposto. Inset nunca
+     transborda e segue o border-radius. */
   :focus-visible {
     outline: 2px solid color-mix(in oklab, var(--color-brand) 70%, transparent);
-    outline-offset: 1px;
+    outline-offset: -2px;
   }
 }
 
