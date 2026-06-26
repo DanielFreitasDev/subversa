@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { AlertTriangle, RefreshCw } from "lucide-react";
 
 import { AppShell } from "@/components/layout/AppShell";
+import { Titlebar } from "@/components/layout/Titlebar";
 import { Button } from "@/components/ui/Button";
 import { Logo } from "@/components/ui/Logo";
 import { checkPrerequisites, suggestedBaseDir } from "@/lib/api";
@@ -122,8 +123,19 @@ export default function App() {
     return () => window.removeEventListener("keydown", onKey);
   }, [togglePalette]);
 
-  if (!loaded || booting) return <Splash />;
-  if (prereq && !prereq.svnOk) return <PrereqGate onRetry={recheckPrereqs} />;
-  if (!config?.host?.trim()) return <SetupView />;
-  return <AppShell />;
+  const content = (() => {
+    if (!loaded || booting) return <Splash />;
+    if (prereq && !prereq.svnOk) return <PrereqGate onRetry={recheckPrereqs} />;
+    if (!config?.host?.trim()) return <SetupView />;
+    return <AppShell />;
+  })();
+
+  // Barra de título própria sempre no topo (mesmo na Splash/Setup), pois a janela
+  // roda sem decoração nativa — é o único jeito de mover/fechar antes do app subir.
+  return (
+    <div className="flex h-full flex-col">
+      <Titlebar />
+      <div className="min-h-0 flex-1">{content}</div>
+    </div>
+  );
 }

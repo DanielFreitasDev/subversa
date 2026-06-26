@@ -401,4 +401,7 @@ export function tauriInit(fx: MockData) {
     },
     plugins: {},
   };
+  // Necessário para os listeners de evento da janela (ex.: `onResized` da barra de
+  // título própria): o caminho de unlisten chama `unregisterListener` aqui.
+  w.__TAURI_EVENT_PLUGIN_INTERNALS__ = { unregisterListener: () => {} };
 }
