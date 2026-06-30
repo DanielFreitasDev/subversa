@@ -30,7 +30,6 @@ export function RepoCompareDialog() {
   const [diff, setDiff] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [ignoreWs, setIgnoreWs] = useState(false);
 
   useEffect(() => {
     if (open) {
@@ -38,7 +37,6 @@ export function RepoCompareDialog() {
       setApplied(null);
       setDiff("");
       setError(null);
-      setIgnoreWs(false);
     }
   }, [open, base]);
 
@@ -48,14 +46,14 @@ export function RepoCompareDialog() {
     setLoading(true);
     setError(null);
     api
-      .diffUrls(base, applied, ignoreWs)
+      .diffUrls(base, applied)
       .then((d) => alive && setDiff(d))
       .catch((e) => alive && setError(String(e)))
       .finally(() => alive && setLoading(false));
     return () => {
       alive = false;
     };
-  }, [applied, ignoreWs, base]);
+  }, [applied, base]);
 
   if (!open || !node) return null;
 
@@ -103,7 +101,7 @@ export function RepoCompareDialog() {
           ) : error ? (
             <div className="whitespace-pre-wrap p-4 text-[13px] text-conflict">{error}</div>
           ) : (
-            <DiffViewer text={diff} ignoreWs={ignoreWs} onToggleIgnoreWs={setIgnoreWs} />
+            <DiffViewer text={diff} />
           )}
         </div>
       </div>

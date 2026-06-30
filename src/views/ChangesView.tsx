@@ -215,7 +215,6 @@ function Changes({ wc }: { wc: WorkingCopy }) {
   const [highlight, setHighlight] = useState<string | null>(null);
   const [diff, setDiff] = useState("");
   const [diffLoading, setDiffLoading] = useState(false);
-  const [ignoreWs, setIgnoreWs] = useState(false);
   // Força recarregar o diff após salvar no editor embutido: o arquivo mudou em
   // disco, mas o caminho destacado continua o mesmo.
   const [diffNonce, setDiffNonce] = useState(0);
@@ -269,14 +268,14 @@ function Changes({ wc }: { wc: WorkingCopy }) {
     let alive = true;
     setDiffLoading(true);
     api
-      .getDiff(wc.path, [highlight], ignoreWs)
+      .getDiff(wc.path, [highlight])
       .then((d) => alive && setDiff(d))
       .catch(() => alive && setDiff(""))
       .finally(() => alive && setDiffLoading(false));
     return () => {
       alive = false;
     };
-  }, [highlight, wc.path, ignoreWs, diffNonce]);
+  }, [highlight, wc.path, diffNonce]);
 
   // Reconsulta o status local quando a janela volta ao foco: ao editar/criar
   // arquivos em outro programa e voltar ao Subversa, a lista atualiza sozinha
@@ -334,9 +333,9 @@ function Changes({ wc }: { wc: WorkingCopy }) {
   // Reverte um único trecho do arquivo destacado (a setinha estilo IntelliJ).
   // Ação precisa e localizada — sem modal de confirmação; ao concluir, recarrega
   // a lista e o diff (o trecho some; se era a última alteração, o arquivo some).
-  // O `patch` vem montado do diff exibido, daí só liberarmos isto com o diff real
-  // (ver o gate `!ignoreWs` no DiffViewer): um diff "-w" mostra o contexto com o
-  // espaçamento da base, que não casaria com o arquivo em disco no `svn patch`.
+  // O `patch` vem montado do diff exibido, daí o DiffViewer só liberar a reversão
+  // quando não há modo de "espaços em branco" ativo (o diff colapsado não casaria
+  // com o arquivo em disco no `svn patch`).
   const revertHunk = async (target: string, patch: string) => {
     const out = await tryRun(() => api.revertHunk(wc.path, target, patch), "Falha ao reverter o trecho");
     if (out && reportOutput(out, "Trecho revertido")) {
@@ -701,13 +700,12 @@ function Changes({ wc }: { wc: WorkingCopy }) {
           ) : (
             <DiffViewer
               text={diff}
-              ignoreWs={ignoreWs}
-              onToggleIgnoreWs={setIgnoreWs}
               externalTool={tool}
               onOpenExternal={() => tryRun(() => api.openExternalDiff(wc.path, tool), "Não consegui abrir o diff externo")}
-              // Reverter trecho só no diff real (sem "ignorar espaços") e em
-              // arquivos modificados versionados — onde um patch reverso faz sentido.
-              onRevertHunk={highlightEntry?.item === "modified" && !ignoreWs ? revertHunk : undefined}
+              // Reverter trecho só em arquivos modificados versionados — onde um
+              // patch reverso faz sentido. (O DiffViewer ainda desabilita quando há
+              // um modo de "espaços em branco" ativo.)
+              onRevertHunk={highlightEntry?.item === "modified" ? revertHunk : undefined}
               onExpandContext={
                 highlight &&
                 highlightEntry &&

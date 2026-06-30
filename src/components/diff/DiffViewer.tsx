@@ -1,15 +1,40 @@
 import { useMemo, useRef, useState } from "react";
-import { Columns2, FoldVertical, Maximize2, Rows3, UnfoldVertical, WrapText } from "lucide-react";
+import { Columns2, FoldVertical, Highlighter, Maximize2, Rows3, UnfoldVertical, WrapText } from "lucide-react";
 
 import { parseUnifiedDiff, type DiffFile } from "@/lib/diff";
 import { HELP } from "@/lib/help";
 import { cn } from "@/lib/utils";
+import { Dropdown, type DropdownOption } from "@/components/ui/Dropdown";
 import { HelpPopover } from "@/components/ui/HelpPopover";
 import { Modal } from "@/components/ui/Modal";
 import { Segmented } from "@/components/ui/Segmented";
-import { useUiStore, type DiffKind, type DiffMode } from "@/store/ui";
+import {
+  useUiStore,
+  type DiffKind,
+  type DiffMode,
+  type HighlightMode,
+  type WsMode,
+} from "@/store/ui";
 
 import { FileBlock, type ContentRef } from "./FileBlock";
+
+/** Itens do menu "Espaços em branco" (estilo IntelliJ, em pt-BR). */
+const WS_OPTIONS: DropdownOption<WsMode>[] = [
+  { value: "none", label: "Não ignorar" },
+  { value: "trim", label: "Aparar espaços em branco" },
+  { value: "ignore", label: "Ignorar espaços em branco" },
+  { value: "ignoreEmpty", label: "Ignorar espaços e linhas vazias" },
+  { value: "ignoreFormat", label: "Ignorar formatação" },
+];
+
+/** Itens do menu "Destaque" (estilo IntelliJ, em pt-BR). */
+const HIGHLIGHT_OPTIONS: DropdownOption<HighlightMode>[] = [
+  { value: "lines", label: "Destacar linhas" },
+  { value: "words", label: "Destacar palavras" },
+  { value: "split", label: "Destacar alterações divididas" },
+  { value: "chars", label: "Destacar caracteres" },
+  { value: "none", label: "Não destacar" },
+];
 
 export interface DiffViewerProps {
   /** Texto do diff unificado (saída de `svn diff`). */
@@ -17,8 +42,6 @@ export interface DiffViewerProps {
   className?: string;
   /** Força um modo; por padrão usa a preferência compartilhada do store `ui`. */
   mode?: DiffMode;
-  ignoreWs?: boolean;
-  onToggleIgnoreWs?: (v: boolean) => void;
   /** Ferramenta externa (ex.: meld) — usada no aviso de arquivo grande. */
   externalTool?: string;
   onOpenExternal?: () => void;
@@ -63,8 +86,6 @@ export function DiffViewer({
   text,
   className,
   mode: forcedMode,
-  ignoreWs,
-  onToggleIgnoreWs,
   externalTool,
   onOpenExternal,
   onExpandContext,
@@ -81,6 +102,11 @@ export function DiffViewer({
   const storeMode = useUiStore((s) => (kind === "added" ? s.diffModeAdded : s.diffModeModified));
   const setDiffMode = useUiStore((s) => s.setDiffMode);
   const mode = forcedMode ?? storeMode;
+  // Espaços/realce: preferências globais (estilo IntelliJ), aplicadas no frontend.
+  const wsMode = useUiStore((s) => s.wsMode);
+  const highlightMode = useUiStore((s) => s.highlightMode);
+  const setWsMode = useUiStore((s) => s.setWsMode);
+  const setHighlightMode = useUiStore((s) => s.setHighlightMode);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
@@ -171,21 +197,22 @@ export function DiffViewer({
             { value: "split", label: "Lado a lado", icon: <Columns2 className="size-3.5" /> },
           ]}
         />
-        {onToggleIgnoreWs && (
-          <button
-            onClick={() => onToggleIgnoreWs(!ignoreWs)}
-            className={cn(
-              "flex h-7 items-center gap-1.5 rounded-lg border px-2.5 text-xs font-medium transition-colors",
-              ignoreWs
-                ? "border-brand/40 bg-brand/10 text-brand"
-                : "border-line/80 text-muted hover:bg-panel-2 hover:text-ink",
-            )}
-            title="Ignorar diferenças de espaço em branco"
-          >
-            <WrapText className="size-3.5" />
-            Ignorar espaços
-          </button>
-        )}
+        <Dropdown<WsMode>
+          value={wsMode}
+          options={WS_OPTIONS}
+          onChange={setWsMode}
+          icon={<WrapText className="size-3.5 shrink-0" />}
+          title="Espaços em branco"
+          ariaLabel="Tratamento de espaços em branco"
+        />
+        <Dropdown<HighlightMode>
+          value={highlightMode}
+          options={HIGHLIGHT_OPTIONS}
+          onChange={setHighlightMode}
+          icon={<Highlighter className="size-3.5 shrink-0" />}
+          title="Destaque das alterações"
+          ariaLabel="Destaque das alterações"
+        />
 
         <div className="ml-auto flex items-center gap-3 text-[11px]">
           <span className="hidden text-faint sm:inline" title="Atalhos: n/p alterações · [ / ] arquivos">
@@ -223,12 +250,16 @@ export function DiffViewer({
             file={file}
             index={i}
             mode={mode}
+            wsMode={wsMode}
+            highlightMode={highlightMode}
             collapsed={collapsed.has(k)}
             onToggleCollapse={() => toggleOne(k)}
             externalTool={externalTool}
             onOpenExternal={onOpenExternal}
             onExpandContext={onExpandContext}
-            onRevertHunk={onRevertHunk}
+            // Reverter trecho só vale sobre o diff exato: com um modo de espaços
+            // ativo, o que se vê (linhas colapsadas) não casa com o patch real.
+            onRevertHunk={wsMode === "none" ? onRevertHunk : undefined}
           />
         );
       })}
@@ -247,8 +278,6 @@ export function DiffViewer({
             <DiffViewer
               text={text}
               mode={forcedMode}
-              ignoreWs={ignoreWs}
-              onToggleIgnoreWs={onToggleIgnoreWs}
               externalTool={externalTool}
               onOpenExternal={onOpenExternal}
               onExpandContext={onExpandContext}

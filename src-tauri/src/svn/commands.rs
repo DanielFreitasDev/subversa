@@ -411,21 +411,16 @@ pub async fn get_status(
 }
 
 /// `svn diff` (contra a BASE local) de toda a WC ou de arquivos específicos.
-/// `ignore_ws` adiciona `-x -w` (ignora diferenças de espaço em branco).
+/// O tratamento de espaços em branco e o realce são aplicados no frontend
+/// (estilo IntelliJ), sobre o diff completo.
 #[tauri::command]
 pub async fn get_diff(
     path: String,
     files: Option<Vec<String>>,
-    ignore_ws: bool,
     state: State<'_, AppState>,
 ) -> Result<String, String> {
     let mode = mode_of(&state);
-    let mut args: Vec<String> = vec!["diff".into(), "--internal-diff".into()];
-    if ignore_ws {
-        args.push("-x".into());
-        args.push("-w".into());
-    }
-    args.push("--".into());
+    let mut args: Vec<String> = vec!["diff".into(), "--internal-diff".into(), "--".into()];
     match files {
         Some(fs) if !fs.is_empty() => args.extend(fs),
         _ => args.push(path),
@@ -439,12 +434,11 @@ pub async fn get_diff(
 ///
 /// Usa `-c REV` (equivale a `-r REV-1:REV`), que cobre o caso de borda da r1
 /// sozinho. Se a revisão não tocar o `target`, o SVN retorna vazio e a UI mostra
-/// "Sem diferenças.". `ignore_ws` adiciona `-x -w`.
+/// "Sem diferenças.". Espaços/realce são tratados no frontend.
 #[tauri::command]
 pub async fn diff_revision(
     target: String,
     revision: String,
-    ignore_ws: bool,
     state: State<'_, AppState>,
 ) -> Result<String, String> {
     if revision.trim().is_empty() {
@@ -455,18 +449,14 @@ pub async fn diff_revision(
         validate_remote_url_for_read(&target, &cfg)?;
     }
     let change = format!("-c{}", revision.trim());
-    let mut args: Vec<&str> = vec![
+    let args: Vec<&str> = vec![
         "diff",
         "--internal-diff",
         "--non-interactive",
         change.as_str(),
+        "--",
+        target.as_str(),
     ];
-    if ignore_ws {
-        args.push("-x");
-        args.push("-w");
-    }
-    args.push("--");
-    args.push(target.as_str());
     run_checked_limited(&args, None, mode, LIMIT_DEFAULT).await
 }
 
@@ -847,26 +837,25 @@ pub async fn get_url_info(url: String, state: State<'_, AppState>) -> Result<Url
 
 /// Diff entre duas URLs (Comparar com…). Usa `--old/--new` (forma canônica);
 /// cada uma aceita `URL@REV`. Não usa `--` porque as flags consomem o próximo
-/// argumento. `ignore_ws` adiciona `-x -w`.
+/// argumento. Espaços/realce são tratados no frontend.
 #[tauri::command]
 pub async fn diff_urls(
     old_url: String,
     new_url: String,
-    ignore_ws: bool,
     state: State<'_, AppState>,
 ) -> Result<String, String> {
     let (mode, cfg) = config_snapshot(&state);
     validate_remote_url_for_read(&old_url, &cfg)?;
     validate_remote_url_for_read(&new_url, &cfg)?;
-    let mut args: Vec<&str> = vec!["diff", "--internal-diff", "--non-interactive"];
-    if ignore_ws {
-        args.push("-x");
-        args.push("-w");
-    }
-    args.push("--old");
-    args.push(old_url.as_str());
-    args.push("--new");
-    args.push(new_url.as_str());
+    let args: Vec<&str> = vec![
+        "diff",
+        "--internal-diff",
+        "--non-interactive",
+        "--old",
+        old_url.as_str(),
+        "--new",
+        new_url.as_str(),
+    ];
     run_checked_limited(&args, None, mode, LIMIT_DEFAULT).await
 }
 

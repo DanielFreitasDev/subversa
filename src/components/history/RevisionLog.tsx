@@ -128,7 +128,6 @@ export function RevisionDetail({
   const [sel, setSel] = useState<"all" | LogPath>("all");
   const [diff, setDiff] = useState("");
   const [loading, setLoading] = useState(false);
-  const [ignoreWs, setIgnoreWs] = useState(false);
 
   // Volta para "revisão inteira" ao trocar de revisão.
   useEffect(() => setSel("all"), [entry.revision]);
@@ -151,7 +150,7 @@ export function RevisionDetail({
   useEffect(() => {
     let alive = true;
     setLoading(true);
-    const fullDiff = () => api.diffRevision(diffOn, entry.revision, ignoreWs);
+    const fullDiff = () => api.diffRevision(diffOn, entry.revision);
     const job =
       showAsAdded && selectedPath
         ? api
@@ -166,7 +165,7 @@ export function RevisionDetail({
     return () => {
       alive = false;
     };
-  }, [diffOn, entry.revision, ignoreWs, showAsAdded, selectedPath]);
+  }, [diffOn, entry.revision, showAsAdded, selectedPath]);
 
   // Conteúdo de referência (revisão REV) para expandir contexto sob demanda.
   const expandFor = useCallback(
@@ -293,12 +292,7 @@ export function RevisionDetail({
         {loading ? (
           <Loading label="Gerando diff…" />
         ) : (
-          <DiffViewer
-            text={diff}
-            ignoreWs={ignoreWs}
-            onToggleIgnoreWs={setIgnoreWs}
-            onExpandContext={expandFor}
-          />
+          <DiffViewer text={diff} onExpandContext={expandFor} />
         )}
       </div>
     </div>

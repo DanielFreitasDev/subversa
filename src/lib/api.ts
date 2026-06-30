@@ -33,12 +33,12 @@ export const getInfo = (path: string) => invoke<WorkingCopy>("get_info", { path 
 export const getStatus = (path: string, remote = false) =>
   invoke<StatusResult>("get_status", { path, remote });
 
-export const getDiff = (path: string, files?: string[], ignoreWs = false) =>
-  invoke<string>("get_diff", { path, files: files ?? null, ignoreWs });
+export const getDiff = (path: string, files?: string[]) =>
+  invoke<string>("get_diff", { path, files: files ?? null });
 
 /** Diff de uma revisão inteira (target = WC/URL) ou de um arquivo (target = URL). */
-export const diffRevision = (target: string, revision: string, ignoreWs = false) =>
-  invoke<string>("diff_revision", { target, revision, ignoreWs });
+export const diffRevision = (target: string, revision: string) =>
+  invoke<string>("diff_revision", { target, revision });
 
 export const getLog = (
   target: string,
@@ -75,8 +75,8 @@ export const blame = (target: string) => invoke<BlameLine[]>("blame", { target }
 export const getUrlInfo = (url: string) => invoke<UrlInfo>("get_url_info", { url });
 
 /** Diff entre duas URLs (Comparar com…); cada URL aceita `URL@REV`. */
-export const diffUrls = (oldUrl: string, newUrl: string, ignoreWs = false) =>
-  invoke<string>("diff_urls", { oldUrl, newUrl, ignoreWs });
+export const diffUrls = (oldUrl: string, newUrl: string) =>
+  invoke<string>("diff_urls", { oldUrl, newUrl });
 
 // --- escrita / servidor ----------------------------------------------------
 

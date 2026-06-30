@@ -24,9 +24,9 @@ import {
 } from "@/lib/diff";
 import { cn } from "@/lib/utils";
 import { toast } from "@/store/toast";
-import type { DiffMode } from "@/store/ui";
+import type { DiffMode, HighlightMode, WsMode } from "@/store/ui";
 
-import { buildRows, buildSplitRows, type Segment } from "./rows";
+import { buildRows, buildSplitRows, resolveHighlight, type Segment } from "./rows";
 import { mergeTokensWithSegments, spansForPlainLine, tokenizeFile, type Span } from "./highlight";
 
 /** Conteúdo de referência (um lado inteiro) para revelar contexto sob demanda. */
@@ -147,11 +147,21 @@ function bgFor(type: DiffLineType): string {
   return type === "add" ? "bg-add/10" : type === "del" ? "bg-del/10" : "";
 }
 
-function UnifiedRow({ line, spans, change }: { line: DiffLine; spans: Span[]; change?: boolean }) {
+function UnifiedRow({
+  line,
+  spans,
+  change,
+  lineBg = true,
+}: {
+  line: DiffLine;
+  spans: Span[];
+  change?: boolean;
+  lineBg?: boolean;
+}) {
   const sign = line.type === "add" ? "+" : line.type === "del" ? "-" : " ";
   const signColor = line.type === "add" ? "text-add" : line.type === "del" ? "text-del" : "text-faint";
   return (
-    <div data-change={change || undefined} className={cn("flex font-mono text-[12.5px] leading-[1.55]", bgFor(line.type))}>
+    <div data-change={change || undefined} className={cn("flex font-mono text-[12.5px] leading-[1.55]", lineBg && bgFor(line.type))}>
       <span className="w-12 shrink-0 select-none border-r border-line/60 px-2 text-right text-faint">
         {line.oldNumber ?? ""}
       </span>
@@ -170,13 +180,15 @@ function SplitSide({
   cell,
   spans,
   side,
+  lineBg = true,
 }: {
   cell: { line: DiffLine; segments: Segment[] } | null;
   spans: Span[] | null;
   side: "left" | "right";
+  lineBg?: boolean;
 }) {
   const num = cell ? (side === "left" ? cell.line.oldNumber : cell.line.newNumber) : null;
-  const bg = !cell ? "bg-panel-2/40" : bgFor(cell.line.type);
+  const bg = !cell ? "bg-panel-2/40" : lineBg ? bgFor(cell.line.type) : "";
   return (
     <>
       <span
@@ -246,6 +258,10 @@ function GapBand({
 export interface FileBlockProps {
   file: DiffFile;
   mode: DiffMode;
+  /** Tratamento de espaços em branco (estilo IntelliJ). */
+  wsMode: WsMode;
+  /** Granularidade do realce de alterações (estilo IntelliJ). */
+  highlightMode: HighlightMode;
   index: number;
   collapsed: boolean;
   onToggleCollapse: () => void;
@@ -264,6 +280,8 @@ export interface FileBlockProps {
 export function FileBlock({
   file,
   mode,
+  wsMode,
+  highlightMode,
   index,
   collapsed,
   onToggleCollapse,
@@ -272,6 +290,8 @@ export function FileBlock({
   onExpandContext,
   onRevertHunk,
 }: FileBlockProps) {
+  const { lineBg, granularity } = resolveHighlight(highlightMode);
+  const rowOpts = { wsMode, granularity };
   // Arquivos enormes não são tokenizados (evita travar o realce de sintaxe).
   const tokens = useMemo(
     () => (file.additions + file.deletions > LARGE_FILE ? null : tokenizeFile(file)),
@@ -443,7 +463,7 @@ export function FileBlock({
     const blocks = onRevertHunk ? changeBlocks(hunk) : [];
 
     if (mode === "split") {
-      const rows = buildSplitRows(hunk);
+      const rows = buildSplitRows(hunk, rowOpts);
       const isChange = (r: (typeof rows)[number]) =>
         r.left?.line.type === "del" || r.right?.line.type === "add";
       // Com reversão por trecho, abre um vão central (onde mora a faixa ">>", como
@@ -463,19 +483,21 @@ export function FileBlock({
             cell={row.left}
             spans={row.left ? spansFor(row.left.line, row.left.segments) : null}
             side="left"
+            lineBg={lineBg}
           />
           {gutter && <span className="border-l border-line/60 bg-panel" />}
           <SplitSide
             cell={row.right}
             spans={row.right ? spansFor(row.right.line, row.right.segments) : null}
             side="right"
+            lineBg={lineBg}
           />
         </div>
       );
       return withRevertAnchors(rows, isChange, renderRow, blocks, hunk);
     }
 
-    const rows = buildRows(hunk);
+    const rows = buildRows(hunk, rowOpts);
     const isChange = (r: (typeof rows)[number]) => r.line.type !== "context";
     const renderRow = (row: (typeof rows)[number], ri: number) => (
       <UnifiedRow
@@ -483,6 +505,7 @@ export function FileBlock({
         line={row.line}
         spans={spansFor(row.line, row.segments)}
         change={row.line.type !== "context" && (ri === 0 || rows[ri - 1].line.type === "context")}
+        lineBg={lineBg}
       />
     );
     return withRevertAnchors(rows, isChange, renderRow, blocks, hunk);

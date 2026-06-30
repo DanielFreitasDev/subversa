@@ -109,9 +109,10 @@ test.describe("tema escuro", () => {
     await openFirstWc(page);
     // Com o diff real há botões de reverter trecho…
     await expect(page.getByRole("button", { name: "Reverter este trecho" }).first()).toBeAttached();
-    // …mas no modo "Ignorar espaços" o patch viria com o contexto da base (não
-    // casaria byte a byte), então a ação some.
-    await page.getByRole("button", { name: /Ignorar espaços/ }).click();
+    // …mas com um modo de "Espaços em branco" ativo o diff é colapsado e não
+    // casaria byte a byte com o arquivo, então a ação some.
+    await page.getByRole("button", { name: "Tratamento de espaços em branco" }).click();
+    await page.getByRole("option", { name: "Ignorar espaços em branco", exact: true }).click();
     await expect(page.getByRole("button", { name: "Reverter este trecho" })).toHaveCount(0);
   });
 

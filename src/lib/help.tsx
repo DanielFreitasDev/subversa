@@ -319,7 +319,8 @@ export const HELP = {
     points: [
       "Verde (+) é o que foi adicionado; vermelho (−) é o que foi removido.",
       "“Unificado” mostra tudo numa coluna; “Lado a lado” põe antes/depois em duas colunas.",
-      "“Ignorar espaços” esconde diferenças só de espaçamento/indentação.",
+      "“Espaços em branco” permite ignorar diferenças só de espaçamento/indentação (aparar, ignorar tudo ou ignorar linhas vazias).",
+      "“Destaque” controla o realce das mudanças: por linha, palavra ou caractere — ou nenhum.",
     ],
     note: "Atalhos: n/p pulam entre mudanças; [ e ] pulam entre arquivos.",
   },
