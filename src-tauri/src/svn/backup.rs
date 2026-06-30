@@ -130,7 +130,8 @@ fn copy_tree(
 ) -> Result<(), String> {
     std::fs::create_dir_all(dst)
         .map_err(|e| format!("não consegui criar {}: {e}", dst.display()))?;
-    let rd = std::fs::read_dir(src).map_err(|e| format!("não consegui ler {}: {e}", src.display()))?;
+    let rd =
+        std::fs::read_dir(src).map_err(|e| format!("não consegui ler {}: {e}", src.display()))?;
     for entry in rd {
         let entry = entry.map_err(|e| format!("falha ao listar {}: {e}", src.display()))?;
         let ft = entry
