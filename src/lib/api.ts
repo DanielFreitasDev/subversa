@@ -14,10 +14,12 @@ import type {
   CommandOutput,
   ConflictDetails,
   ContentSearchResult,
+  HunkRef,
   IncomingResult,
   ListEntry,
   LogEntry,
   Prerequisites,
+  StashResult,
   StatusResult,
   UrlInfo,
   WorkingCopy,
@@ -93,11 +95,20 @@ export const svnAdd = (paths: string[]) => invoke<CommandOutput>("svn_add", { pa
 export const revert = (paths: string[], recursive = false) =>
   invoke<CommandOutput>("revert", { paths, recursive });
 
-/** Reverte um único trecho (change-block): aplica em reverso um patch mínimo
- *  daquele trecho via `svn patch --reverse-diff`. `target` é o caminho absoluto
- *  do arquivo (para limpar um eventual `.svnpatch.rej`). */
-export const revertHunk = (wcPath: string, target: string, patch: string) =>
-  invoke<CommandOutput>("revert_hunk", { wcPath, target, patch });
+/** Reverte um único trecho (change-block): o backend remonta o patch mínimo a
+ *  partir do `svn diff` bruto do arquivo (fiel à codificação) e o aplica em
+ *  reverso via `svn patch --reverse-diff`. `hunk` identifica o trecho. */
+export const revertHunk = (wcPath: string, target: string, hunk: HunkRef) =>
+  invoke<CommandOutput>("revert_hunk", { wcPath, target, hunk });
+
+/** Captura o estado atual dos arquivos antes de uma reversão, para um Ctrl+Z
+ *  depois. Devolve um `id` (0 = nada a desfazer). Ver `undoRevert`. */
+export const stashRevert = (wcPath: string, paths: string[], label: string) =>
+  invoke<StashResult>("stash_revert", { wcPath, paths, label });
+
+/** Desfaz uma reversão: restaura o conteúdo e o agendamento svn capturados. */
+export const undoRevert = (id: number) =>
+  invoke<CommandOutput>("undo_revert", { id });
 
 export const remove = (paths: string[], keepLocal = false, force = false) =>
   invoke<CommandOutput>("remove", { paths, keepLocal, force });

@@ -9,6 +9,7 @@ import type { WorkingCopy } from "@/lib/types";
 import { useConfigStore } from "@/store/config";
 import { toast } from "@/store/toast";
 import { useUiStore } from "@/store/ui";
+import { useUndoStore } from "@/store/undo";
 import { useWorkspaceStore } from "@/store/workspace";
 
 export function useActions() {
@@ -56,14 +57,21 @@ export function useActions() {
     [refreshOne],
   );
 
-  /** Reverte TODAS as alterações locais (recursivo) — destrutivo. */
+  /**
+   * Reverte TODAS as alterações locais (recursivo) — destrutivo. Quando o
+   * chamador informa os `affectedPaths` (a aba Alterações conhece a lista), antes
+   * de reverter capturamos um ponto de desfazer (Ctrl+Z) e oferecemos "Desfazer"
+   * no toast — daí a mensagem deixar de prometer que "não dá para desfazer".
+   */
   const revertAll = useCallback(
-    async (wc: WorkingCopy) => {
+    async (wc: WorkingCopy, affectedPaths?: string[]) => {
+      const undoable = !!affectedPaths?.length;
       const ok = await guardDestructive(wc, "reverter tudo", {
         confirm: {
           title: "Reverter todas as alterações?",
-          message:
-            "Isso descarta TODAS as modificações locais desta working copy. Não dá para desfazer.",
+          message: undoable
+            ? "Isso descarta TODAS as modificações locais desta working copy. Dá para desfazer logo depois (Ctrl+Z)."
+            : "Isso descarta TODAS as modificações locais desta working copy. Não dá para desfazer.",
           confirmLabel: "Reverter tudo",
           danger: true,
           cancelLabel: "Cancelar",
@@ -71,12 +79,32 @@ export function useActions() {
         confirmRequired: true,
       });
       if (!ok) return false;
+      // Captura o estado atual ANTES de reverter (best-effort: se falhar, segue
+      // sem desfazer). `affectedPaths` exclui não-versionados (revert não os toca).
+      const stash = undoable
+        ? await api.stashRevert(wc.path, affectedPaths!, "reverter tudo").catch(() => null)
+        : null;
       const out = await tryRun(() => api.revert([wc.path], true), "Falha no revert");
-      if (out && reportOutput(out, "Alterações revertidas")) {
-        await refreshOne(wc.path);
-        return true;
+      if (!out) return false;
+      if (!out.success) {
+        reportOutput(out, "");
+        return false;
       }
-      return false;
+      await refreshOne(wc.path);
+      if (stash?.id) {
+        useUndoStore.getState().push({
+          id: stash.id,
+          label: stash.label,
+          wcPath: wc.path,
+          fileCount: stash.fileCount,
+        });
+        toast.success("Alterações revertidas", undefined, {
+          action: { label: "Desfazer", onClick: () => useUndoStore.getState().run(stash.id) },
+        });
+      } else {
+        toast.success("Alterações revertidas");
+      }
+      return true;
     },
     [refreshOne],
   );

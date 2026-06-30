@@ -1,6 +1,6 @@
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
-import { AlertTriangle, CheckCircle2, Info, X, XCircle } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Info, Undo2, X, XCircle } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { useToastStore, type ToastKind } from "@/store/toast";
@@ -46,6 +46,18 @@ export function Toaster() {
                 <p className="mt-0.5 whitespace-pre-wrap break-words text-[13px] leading-snug text-muted selectable">
                   {t.description}
                 </p>
+              )}
+              {t.action && (
+                <button
+                  onClick={() => {
+                    t.action?.onClick();
+                    dismiss(t.id);
+                  }}
+                  className="mt-1.5 inline-flex items-center gap-1.5 rounded-md border border-line bg-panel-2 px-2 py-1 text-[12px] font-medium text-ink transition-colors hover:border-info/50 hover:bg-info/10 hover:text-info"
+                >
+                  <Undo2 className="size-3.5" />
+                  {t.action.label}
+                </button>
               )}
             </div>
             <button

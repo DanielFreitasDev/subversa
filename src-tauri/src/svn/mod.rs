@@ -4,6 +4,8 @@ pub mod audit;
 pub mod backup;
 pub mod commands;
 pub mod conn;
+pub mod hunk;
 pub mod parser;
 pub mod runner;
 pub mod types;
+pub mod undo;

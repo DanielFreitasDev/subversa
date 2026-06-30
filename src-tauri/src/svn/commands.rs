@@ -8,13 +8,14 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
+use serde::Deserialize;
 use tauri::{AppHandle, Emitter, State};
 use url::Url;
 
 use super::parser;
 use super::runner::{
-    run, run_checked, run_checked_limited, run_limited, run_with_progress, LIMIT_BLAME,
-    LIMIT_CAT_FILE, LIMIT_DEFAULT,
+    run, run_checked, run_checked_limited, run_limited, run_raw_checked_limited,
+    run_with_progress, LIMIT_BLAME, LIMIT_CAT_FILE, LIMIT_DEFAULT,
 };
 use super::types::*;
 use crate::config;
@@ -1059,15 +1060,50 @@ pub async fn revert(
     run(&refs, None, mode).await
 }
 
+/// Referência a um trecho do diff exibido, montada no frontend. O backend
+/// reconstrói o patch a partir do `svn diff` **bruto** (não do texto exibido) e
+/// usa a assinatura para confirmar que ainda é o mesmo trecho.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HunkRef {
+    /// Índice do trecho na ordem de documento (hunks → blocos) do arquivo.
+    pub block_index: u32,
+    /// Quantos trechos o frontend via no arquivo (detecta diff defasado).
+    pub total_blocks: u32,
+    /// 1ª linha do trecho na base (0 se adição pura).
+    pub first_old: u32,
+    /// 1ª linha do trecho no trabalho (0 se remoção pura).
+    pub first_new: u32,
+    pub add_count: u32,
+    pub del_count: u32,
+}
+
+/// Falha "o trecho não casou": o arquivo mudou desde que o diff foi exibido.
+fn hunk_stale_output() -> CommandOutput {
+    CommandOutput {
+        success: false,
+        code: None,
+        stdout: String::new(),
+        stderr: String::new(),
+        hint: Some(
+            "O trecho não casou com o arquivo atual — ele pode ter mudado desde que o diff foi gerado. Atualize as alterações e tente de novo."
+                .into(),
+        ),
+        command: "svn patch --reverse-diff".into(),
+    }
+}
+
 /// Reverte um único **trecho** (change-block) de um arquivo modificado da working
 /// copy, sem tocar nos demais trechos do mesmo arquivo — o equivalente à setinha
 /// `>>` do IntelliJ.
 ///
-/// O `patch` é um diff unificado mínimo (cabeçalho + um hunk) no sentido
-/// **direto** (base→trabalho) contendo só aquele trecho, montado no frontend a
-/// partir do diff já exibido. Aplicamos com `svn patch --reverse-diff`, que o
-/// desfaz: o `--reverse-diff` evita ter que inverter `+`/`-` à mão e preserva o
-/// tratamento de EOL/quebra-final do próprio Subversion.
+/// O patch é um diff unificado mínimo (cabeçalho + um hunk) no sentido **direto**
+/// (base→trabalho) contendo só aquele trecho. Ele é **remontado aqui no backend**
+/// a partir do `svn diff` bruto (bytes) — e não do texto exibido na UI, que é
+/// decodificado como UTF-8 *lossy* e corromperia o contexto de arquivos não-UTF-8
+/// (ex.: Latin-1), fazendo o `svn patch` rejeitar o trecho. Aplicamos com
+/// `svn patch --reverse-diff`, que o desfaz: evita inverter `+`/`-` à mão e
+/// preserva o tratamento de EOL/quebra-final do próprio Subversion.
 ///
 /// Cuidado importante: o `svn patch` retorna **0 mesmo quando o trecho não casa**
 /// (o arquivo mudou desde que o diff foi gerado). Nesse caso ele imprime a letra
@@ -1079,14 +1115,40 @@ pub async fn revert(
 pub async fn revert_hunk(
     wc_path: String,
     target: String,
-    patch: String,
+    hunk: HunkRef,
     state: State<'_, AppState>,
 ) -> Result<CommandOutput, String> {
     let (mode, cfg) = config_snapshot(&state);
     let wc = validate_local_path(&wc_path, &cfg, "working copy", true, false)?;
     let tgt = validate_local_path(&target, &cfg, "arquivo", true, false)?;
-    if patch.trim().is_empty() {
-        return Err("trecho vazio para reverter.".into());
+    let tgt_s = tgt.to_string_lossy().to_string();
+
+    // Diff bruto do arquivo (bytes): preserva a codificação original, então o
+    // corpo do patch tem exatamente os bytes que o `svn patch` vai conferir.
+    let diff = run_raw_checked_limited(
+        &["diff", "--internal-diff", "--", &tgt_s],
+        None,
+        mode,
+        LIMIT_DEFAULT,
+    )
+    .await?;
+    let blocks = super::hunk::extract_blocks(&diff, &tgt_s);
+
+    // O arquivo pode ter mudado desde que a UI montou o diff: confere a
+    // quantidade de trechos e a assinatura do trecho-alvo antes de aplicar.
+    if blocks.len() as u32 != hunk.total_blocks {
+        return Ok(hunk_stale_output());
+    }
+    let block = match blocks.get(hunk.block_index as usize) {
+        Some(b) => b,
+        None => return Ok(hunk_stale_output()),
+    };
+    if block.first_old != hunk.first_old
+        || block.first_new != hunk.first_new
+        || block.add_count != hunk.add_count
+        || block.del_count != hunk.del_count
+    {
+        return Ok(hunk_stale_output());
     }
 
     let tmp = std::env::temp_dir().join(format!(
@@ -1094,7 +1156,7 @@ pub async fn revert_hunk(
         std::process::id(),
         next_op_id()
     ));
-    std::fs::write(&tmp, patch.as_bytes())
+    std::fs::write(&tmp, &block.patch)
         .map_err(|e| format!("não consegui preparar o trecho: {e}"))?;
     let tmp_s = tmp.to_string_lossy().to_string();
     let wc_s = wc.to_string_lossy().to_string();

@@ -114,13 +114,50 @@ pub async fn run_limited(
     // Funil único de telemetria: mede a duração e registra TODO comando svn
     // (sucesso, falha, timeout ou erro de spawn) num só ponto de saída.
     let started = Instant::now();
-    let result = run_inner(args, cwd, mode, limit).await;
-    let (success, code) = match &result {
-        Ok(out) => (out.success, out.code),
+    let out = run_inner(args, cwd, mode, limit)
+        .await
+        .map(|(status, stdout, stderr)| build_output(args, status, &stdout, &stderr));
+    let (success, code) = match &out {
+        Ok(o) => (o.success, o.code),
         Err(_) => (false, None),
     };
     audit::record(&display_command(args), success, code, started.elapsed());
-    result
+    out
+}
+
+/// Igual a [`run_checked_limited`], mas devolve o stdout **bruto** (bytes), sem
+/// decodificar como UTF-8. Necessário para reconstruir um patch fiel byte a byte
+/// de arquivos que não são UTF-8 (ex.: Latin-1): a decodificação lossy trocaria
+/// os bytes acentuados por U+FFFD e o `svn patch` rejeitaria o trecho ao reverter.
+pub async fn run_raw_checked_limited(
+    args: &[&str],
+    cwd: Option<&Path>,
+    mode: SshMode,
+    limit: OutputLimit,
+) -> Result<Vec<u8>, String> {
+    let started = Instant::now();
+    let result = run_inner(args, cwd, mode, limit).await;
+    let (ok, code, ret) = match result {
+        Ok((status, stdout, stderr)) => {
+            if status.success() {
+                (true, status.code(), Ok(stdout))
+            } else {
+                let stderr = String::from_utf8_lossy(&stderr);
+                let mut msg = stderr.trim().to_string();
+                if msg.is_empty() {
+                    msg = format!("svn falhou (código {:?})", status.code());
+                }
+                if let Some(h) = hint_from_stderr(&stderr) {
+                    msg.push_str("\n\n");
+                    msg.push_str(&h);
+                }
+                (false, status.code(), Err(msg))
+            }
+        }
+        Err(e) => (false, None, Err(e)),
+    };
+    audit::record(&display_command(args), ok, code, started.elapsed());
+    ret
 }
 
 async fn run_inner(
@@ -128,7 +165,7 @@ async fn run_inner(
     cwd: Option<&Path>,
     mode: SshMode,
     limit: OutputLimit,
-) -> Result<CommandOutput, String> {
+) -> Result<(std::process::ExitStatus, Vec<u8>, Vec<u8>), String> {
     let mut cmd = Command::new("svn");
     cmd.args(args);
     if let Some(dir) = cwd {
@@ -204,7 +241,7 @@ async fn run_inner(
         .await
         .map_err(|e| format!("falha ao aguardar o svn: {e}"))?;
 
-    Ok(build_output(args, status, &stdout, &stderr))
+    Ok((status, stdout, stderr))
 }
 
 /// Monta o [`CommandOutput`] final a partir do status e das saídas brutas.

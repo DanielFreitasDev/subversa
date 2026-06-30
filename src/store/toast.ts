@@ -4,6 +4,12 @@ import { create } from "zustand";
 
 export type ToastKind = "success" | "error" | "info" | "warn";
 
+/** Botão de ação opcional no toast (ex.: "Desfazer" após reverter). */
+export interface ToastAction {
+  label: string;
+  onClick: () => void;
+}
+
 export interface Toast {
   id: number;
   kind: ToastKind;
@@ -11,6 +17,13 @@ export interface Toast {
   description?: string;
   /** Duração em ms; 0 = não some sozinho. */
   duration: number;
+  action?: ToastAction;
+}
+
+/** Opções extras dos helpers imperativos (ação, duração). */
+interface ToastOpts {
+  action?: ToastAction;
+  duration?: number;
 }
 
 interface ToastState {
@@ -51,12 +64,12 @@ export const useToastStore = create<ToastState>((set, get) => ({
 
 /** Atalhos imperativos para usar fora de componentes. */
 export const toast = {
-  success: (title: string, description?: string) =>
-    useToastStore.getState().push({ kind: "success", title, description }),
-  error: (title: string, description?: string) =>
-    useToastStore.getState().push({ kind: "error", title, description, duration: 9000 }),
-  info: (title: string, description?: string) =>
-    useToastStore.getState().push({ kind: "info", title, description }),
-  warn: (title: string, description?: string) =>
-    useToastStore.getState().push({ kind: "warn", title, description }),
+  success: (title: string, description?: string, opts?: ToastOpts) =>
+    useToastStore.getState().push({ kind: "success", title, description, ...opts }),
+  error: (title: string, description?: string, opts?: ToastOpts) =>
+    useToastStore.getState().push({ kind: "error", title, description, duration: 9000, ...opts }),
+  info: (title: string, description?: string, opts?: ToastOpts) =>
+    useToastStore.getState().push({ kind: "info", title, description, ...opts }),
+  warn: (title: string, description?: string, opts?: ToastOpts) =>
+    useToastStore.getState().push({ kind: "warn", title, description, ...opts }),
 };

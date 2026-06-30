@@ -34,11 +34,12 @@ import { useSelectedWc } from "@/hooks/useSelectedWc";
 import { useStatus } from "@/hooks/useStatus";
 import { HELP } from "@/lib/help";
 import { extractRevision, reportOutput, tryRun } from "@/lib/op";
-import type { StatusEntry, WorkingCopy } from "@/lib/types";
+import type { HunkRef, StashResult, StatusEntry, WorkingCopy } from "@/lib/types";
 import { baseName, cn, dirName, statusMeta } from "@/lib/utils";
-import { confirm } from "@/store/confirm";
+import { confirm, useConfirmStore } from "@/store/confirm";
 import { useConfigStore } from "@/store/config";
 import { toast } from "@/store/toast";
+import { useUndoStore } from "@/store/undo";
 import { useWorkspaceStore } from "@/store/workspace";
 import { NeedWorkingCopy } from "./_shared";
 
@@ -204,6 +205,8 @@ function StatusRow({
 function Changes({ wc }: { wc: WorkingCopy }) {
   const { data, loading, reload } = useStatus(wc.path);
   const refreshOne = useWorkspaceStore((s) => s.refreshOne);
+  // Recarrega a lista/diff quando um desfazer (Ctrl+Z) conclui em outro lugar.
+  const undoReloadKey = useUndoStore((s) => s.reloadKey);
   const { revertAll } = useActions();
   const ctx = useContextMenu();
   const config = useConfigStore((s) => s.config);
@@ -286,6 +289,45 @@ function Changes({ wc }: { wc: WorkingCopy }) {
     return () => window.removeEventListener("focus", onFocus);
   }, [reload]);
 
+  // Após um desfazer (botão "Desfazer" do toast ou Ctrl+Z), ressincroniza a
+  // lista e o diff. Pula a 1ª execução (montagem) — só reage a desfazeres reais.
+  const firstUndoSync = useRef(true);
+  useEffect(() => {
+    if (firstUndoSync.current) {
+      firstUndoSync.current = false;
+      return;
+    }
+    reload(false);
+    setDiffNonce((n) => n + 1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [undoReloadKey]);
+
+  // Ctrl+Z (⌘Z) desfaz a última reversão desta working copy. Ignora quando se
+  // está digitando (campo/textarea/editor) ou com um modal aberto — nesses casos
+  // o Ctrl+Z pertence ao campo/editor, não à pilha de reversões.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey) return;
+      if (e.key.toLowerCase() !== "z") return;
+      const el = document.activeElement as HTMLElement | null;
+      if (
+        el?.tagName === "INPUT" ||
+        el?.tagName === "TEXTAREA" ||
+        el?.isContentEditable ||
+        el?.closest?.(".cm-editor")
+      ) {
+        return;
+      }
+      if (editPath || mergePath || conflictPath || useConfirmStore.getState().pending) return;
+      const item = useUndoStore.getState().latestFor(wc.path);
+      if (!item) return;
+      e.preventDefault();
+      void useUndoStore.getState().run(item.id);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [wc.path, editPath, mergePath, conflictPath]);
+
   const selectedEntries = entries.filter((e) => checked.has(e.path));
   const selectableEntries = entries.filter(isSelectable);
   const allSelected = selectableEntries.length > 0 && selectableEntries.every((e) => checked.has(e.path));
@@ -307,42 +349,75 @@ function Changes({ wc }: { wc: WorkingCopy }) {
   const toggleAll = () =>
     setChecked(allSelected ? new Set() : new Set(selectableEntries.map((e) => e.path)));
 
+  // Empilha o ponto de desfazer (se capturado) e mostra o toast de sucesso com o
+  // botão "Desfazer" (que, como o Ctrl+Z, restaura o que a reversão descartou).
+  const offerUndo = (stash: StashResult | null, title: string) => {
+    if (stash?.id) {
+      useUndoStore.getState().push({
+        id: stash.id,
+        label: stash.label,
+        wcPath: wc.path,
+        fileCount: stash.fileCount,
+      });
+      toast.success(title, undefined, {
+        action: { label: "Desfazer", onClick: () => useUndoStore.getState().run(stash.id) },
+      });
+    } else {
+      toast.success(title);
+    }
+  };
+
   const revertPaths = async (paths: string[]) => {
     if (!paths.length) return;
     const ok = await confirm({
       title: paths.length === 1 ? "Reverter este arquivo?" : `Reverter ${paths.length} itens?`,
-      message: "As alterações locais selecionadas serão descartadas. Não dá para desfazer.",
+      message: "As alterações locais selecionadas serão descartadas. Dá para desfazer logo depois (Ctrl+Z).",
       danger: true,
       confirmLabel: "Reverter",
     });
     if (!ok) return;
+    // Captura o estado atual ANTES de reverter (best-effort), para o desfazer.
+    const stash = await api
+      .stashRevert(wc.path, paths, paths.length === 1 ? "reverter arquivo" : "reverter selecionados")
+      .catch(() => null);
     const out = await tryRun(() => api.revert(paths, false), "Falha no revert");
-    if (out && reportOutput(out, "Alterações revertidas")) {
-      await reload(false);
-      await refreshOne(wc.path);
+    if (!out) return;
+    if (!out.success) {
+      reportOutput(out, "");
+      return;
     }
+    await reload(false);
+    await refreshOne(wc.path);
+    offerUndo(stash, "Alterações revertidas");
   };
 
   // Reverte TODAS as alterações da working copy (recursivo). Reaproveita a ação
-  // de alto nível (confirma e oferece ponto de restauração) e só ressincroniza
-  // a lista local quando ela conclui.
+  // de alto nível (confirma, oferece ponto de restauração e captura o desfazer);
+  // passa a lista de versionados para o stash e só ressincroniza ao concluir.
   const revertEverything = async () => {
-    if (await revertAll(wc)) await reload(false);
+    const paths = entries.filter((e) => e.item !== "unversioned").map((e) => e.path);
+    if (await revertAll(wc, paths)) await reload(false);
   };
 
   // Reverte um único trecho do arquivo destacado (a setinha estilo IntelliJ).
   // Ação precisa e localizada — sem modal de confirmação; ao concluir, recarrega
   // a lista e o diff (o trecho some; se era a última alteração, o arquivo some).
-  // O `patch` vem montado do diff exibido, daí o DiffViewer só liberar a reversão
-  // quando não há modo de "espaços em branco" ativo (o diff colapsado não casaria
-  // com o arquivo em disco no `svn patch`).
-  const revertHunk = async (target: string, patch: string) => {
-    const out = await tryRun(() => api.revertHunk(wc.path, target, patch), "Falha ao reverter o trecho");
-    if (out && reportOutput(out, "Trecho revertido")) {
-      await reload(false);
-      await refreshOne(wc.path);
-      setDiffNonce((n) => n + 1);
+  // O backend remonta o patch a partir do diff bruto, então a reversão funciona
+  // mesmo em arquivos não-UTF-8; o DiffViewer ainda só libera a setinha quando
+  // não há modo de "espaços em branco" ativo (o diff colapsado não casaria).
+  const revertHunk = async (target: string, hunk: HunkRef) => {
+    // Stash do arquivo inteiro antes de aplicar o patch — restaura no desfazer.
+    const stash = await api.stashRevert(wc.path, [target], "reverter trecho").catch(() => null);
+    const out = await tryRun(() => api.revertHunk(wc.path, target, hunk), "Falha ao reverter o trecho");
+    if (!out) return;
+    if (!out.success) {
+      reportOutput(out, "");
+      return;
     }
+    await reload(false);
+    await refreshOne(wc.path);
+    setDiffNonce((n) => n + 1);
+    offerUndo(stash, "Trecho revertido");
   };
 
   // Coloca um arquivo novo (não versionado) sob o SVN — passa a "Adicionado".

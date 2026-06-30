@@ -1,5 +1,7 @@
 /** Parser do diff unificado produzido pelo `svn diff`. */
 
+import type { HunkRef } from "./types";
+
 export type DiffLineType = "context" | "add" | "del";
 
 export interface DiffLine {
@@ -9,8 +11,8 @@ export interface DiffLine {
   newNumber: number | null;
   /**
    * Esta linha é seguida de "\ No newline at end of file" no diff — ou seja, o
-   * arquivo termina nela sem quebra final. Preservado para remontar o patch de
-   * reversão de um trecho byte a byte (ver [`buildHunkPatch`]).
+   * arquivo termina nela sem quebra final. (A reversão de um trecho é remontada
+   * no backend a partir do diff bruto, que já preserva esse marcador.)
    */
   noNewline?: boolean;
 }
@@ -200,62 +202,25 @@ export function changeBlocks(hunk: DiffHunk): ChangeBlock[] {
   return blocks;
 }
 
-/** Linhas de contexto incluídas de cada lado ao isolar um trecho (casamento do patch). */
-const HUNK_CONTEXT = 3;
-
 /**
- * Monta um patch unificado mínimo (cabeçalho + um único hunk) contendo só o
- * `block`, cercado por até [`HUNK_CONTEXT`] linhas de contexto de cada lado (sem
- * invadir um trecho vizinho). É o diff no sentido **direto** (base→trabalho) — o
- * backend o aplica com `svn patch --reverse-diff`, desfazendo exatamente aquele
- * trecho.
- *
- * O `Index:`/`---`/`+++` repetem o caminho do arquivo (absoluto, como o `svn
- * diff` o emitiu) para o `svn patch` localizar o alvo. Os marcadores
- * "\ No newline at end of file" são preservados (linha a linha) — sem eles, a
- * reversão de um arquivo sem quebra final acrescentaria uma quebra indevida.
+ * Identifica um trecho para o backend reverter (a setinha ">>"). Diferente da
+ * versão antiga, **não** monta o patch aqui: o texto exibido é decodificado como
+ * UTF-8 *lossy*, então em arquivos não-UTF-8 (ex.: Latin-1) o contexto sairia
+ * corrompido e o `svn patch` rejeitaria o trecho. Em vez disso, o backend remonta
+ * o patch a partir do `svn diff` bruto; aqui só passamos o índice do trecho no
+ * arquivo (ordem de documento) e uma assinatura — números das 1ªs linhas +
+ * contagens — que deixa o backend confirmar que ainda é o mesmo trecho.
  */
-export function buildHunkPatch(file: DiffFile, hunk: DiffHunk, block: ChangeBlock): string {
-  const lines = hunk.lines;
-  let from = block.start;
-  for (let c = 0; c < HUNK_CONTEXT && from > 0 && lines[from - 1].type === "context"; c++) from--;
-  let to = block.end;
-  for (let c = 0; c < HUNK_CONTEXT && to < lines.length && lines[to].type === "context"; c++) to++;
-
-  const slice = lines.slice(from, to);
-  let oldStart = 0;
-  let newStart = 0;
-  let oldCount = 0;
-  let newCount = 0;
-  for (const l of slice) {
-    if (l.oldNumber != null) {
-      if (oldCount === 0) oldStart = l.oldNumber;
-      oldCount++;
-    }
-    if (l.newNumber != null) {
-      if (newCount === 0) newStart = l.newNumber;
-      newCount++;
-    }
-  }
-  // Trecho sem contexto de um dos lados (ex.: no começo do arquivo): cai para o
-  // início do hunk — o `svn patch` ainda casa pelas linhas de contexto.
-  if (oldStart === 0) oldStart = hunk.oldStart;
-  if (newStart === 0) newStart = hunk.newStart;
-
-  const body = slice
-    .map((l) => {
-      const sign = l.type === "add" ? "+" : l.type === "del" ? "-" : " ";
-      const tail = l.noNewline ? "\n\\ No newline at end of file" : "";
-      return `${sign}${l.content}${tail}`;
-    })
-    .join("\n");
-
-  return (
-    `Index: ${file.path}\n` +
-    "===================================================================\n" +
-    `--- ${file.path}\n` +
-    `+++ ${file.path}\n` +
-    `@@ -${oldStart},${oldCount} +${newStart},${newCount} @@\n` +
-    `${body}\n`
-  );
+export function hunkRef(
+  hunk: DiffHunk,
+  block: ChangeBlock,
+  blockIndex: number,
+  totalBlocks: number,
+): HunkRef {
+  const lines = hunk.lines.slice(block.start, block.end);
+  const firstOld = lines.find((l) => l.oldNumber != null)?.oldNumber ?? 0;
+  const firstNew = lines.find((l) => l.newNumber != null)?.newNumber ?? 0;
+  const addCount = lines.filter((l) => l.type === "add").length;
+  const delCount = lines.filter((l) => l.type === "del").length;
+  return { blockIndex, totalBlocks, firstOld, firstNew, addCount, delCount };
 }

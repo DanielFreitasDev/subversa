@@ -15,6 +15,8 @@ use svn::types::AppConfig;
 /// Estado global compartilhado entre os comandos.
 pub struct AppState {
     pub config: Mutex<AppConfig>,
+    /// Pilha de desfazer (Ctrl+Z) das reversões — só em memória, ver `svn::undo`.
+    pub undo: Mutex<svn::undo::UndoStore>,
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -29,10 +31,15 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .manage(AppState {
             config: Mutex::new(config),
+            undo: Mutex::new(svn::undo::UndoStore::default()),
         })
         .setup(|app| {
             // Coletor de auditoria dos comandos svn (arquivo + evento p/ a UI).
             svn::audit::init(app.handle().clone());
+
+            // Limpa blobs de desfazer órfãos de sessões anteriores (a pilha em
+            // memória recomeça vazia, então o que ficou em disco é lixo).
+            svn::undo::clear_disk();
 
             // Reaplica o ícone embutido na janela após sua criação. Garante o
             // logo no título e na barra de tarefas do Linux (_NET_WM_ICON),
@@ -68,6 +75,8 @@ pub fn run() {
             svn::commands::svn_add,
             svn::commands::revert,
             svn::commands::revert_hunk,
+            svn::undo::stash_revert,
+            svn::undo::undo_revert,
             svn::commands::remove,
             svn::commands::create_branch,
             svn::commands::switch_wc,

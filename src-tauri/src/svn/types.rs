@@ -31,6 +31,17 @@ pub struct CommandOutput {
     pub command: String,
 }
 
+/// Resultado de um *stash* de desfazer (ver `undo.rs`): o `id` para desfazer
+/// depois e quantos arquivos foram capturados. `id == 0` = nada a desfazer.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StashResult {
+    pub id: u64,
+    pub file_count: u32,
+    /// Rótulo da operação (ex.: "reverter trecho") — para o texto do desfazer.
+    pub label: String,
+}
+
 /// Detalhes de um conflito para o editor de mesclagem em 3 painéis.
 ///
 /// `kind`: `text` (conteúdo, abre o editor), `tree` (árvore), `property`

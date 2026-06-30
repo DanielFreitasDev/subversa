@@ -15,6 +15,27 @@ export interface CommandOutput {
   command: string;
 }
 
+/** Resultado de um stash de desfazer (ver `stashRevert`). `id === 0` = nada a desfazer. */
+export interface StashResult {
+  id: number;
+  fileCount: number;
+  label: string;
+}
+
+/**
+ * Referência a um trecho do diff para reverter (a setinha ">>"). O backend
+ * reconstrói o patch a partir do `svn diff` bruto; estes campos identificam o
+ * trecho e detectam um diff defasado. Montado por `hunkRef` em `lib/diff.ts`.
+ */
+export interface HunkRef {
+  blockIndex: number;
+  totalBlocks: number;
+  firstOld: number;
+  firstNew: number;
+  addCount: number;
+  delCount: number;
+}
+
 /**
  * Operações de transferência cujo progresso é transmitido pelo evento
  * `op-progress`. Commit/import ficam de fora: imprimem o progresso em português

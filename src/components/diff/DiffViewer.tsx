@@ -2,6 +2,7 @@ import { useMemo, useRef, useState } from "react";
 import { Columns2, FoldVertical, Highlighter, Maximize2, Rows3, UnfoldVertical, WrapText } from "lucide-react";
 
 import { parseUnifiedDiff, type DiffFile } from "@/lib/diff";
+import type { HunkRef } from "@/lib/types";
 import { HELP } from "@/lib/help";
 import { cn } from "@/lib/utils";
 import { Dropdown, type DropdownOption } from "@/components/ui/Dropdown";
@@ -49,11 +50,11 @@ export interface DiffViewerProps {
   onExpandContext?: (file: DiffFile) => Promise<ContentRef | null>;
   /**
    * Habilita reverter um trecho (change-block) — a setinha ">>" estilo IntelliJ.
-   * Recebe o caminho do arquivo e o patch mínimo do trecho (sentido direto).
-   * Só faz sentido para alterações locais (aba Alterações); omitir nos diffs
-   * históricos.
+   * Recebe o caminho do arquivo e a referência do trecho (o backend remonta o
+   * patch). Só faz sentido para alterações locais (aba Alterações); omitir nos
+   * diffs históricos.
    */
-  onRevertHunk?: (target: string, patch: string) => void;
+  onRevertHunk?: (target: string, hunk: HunkRef) => void;
   /** Mostra o botão de abrir em janela ampliada (off na cópia já ampliada). */
   expandable?: boolean;
   /** Título/subtítulo da janela ampliada (padrão: "Diferenças" + caminho). */

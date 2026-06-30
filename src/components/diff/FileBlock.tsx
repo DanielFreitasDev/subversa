@@ -14,14 +14,15 @@ import {
 } from "lucide-react";
 
 import {
-  buildHunkPatch,
   changeBlocks,
+  hunkRef,
   type ChangeBlock,
   type DiffFile,
   type DiffHunk,
   type DiffLine,
   type DiffLineType,
 } from "@/lib/diff";
+import type { HunkRef } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { toast } from "@/store/toast";
 import type { DiffMode, HighlightMode, WsMode } from "@/store/ui";
@@ -270,11 +271,11 @@ export interface FileBlockProps {
   onExpandContext?: (file: DiffFile) => Promise<ContentRef | null>;
   /**
    * Habilita o botão de reverter trecho (estilo IntelliJ) em cada bloco de
-   * alteração. Recebe o caminho do arquivo e o patch mínimo daquele trecho (no
-   * sentido direto — o backend o aplica em reverso). Ausente = sem reversão (ex.:
-   * diffs históricos, que não são alterações locais).
+   * alteração. Recebe o caminho do arquivo e a referência do trecho (o backend
+   * remonta o patch a partir do diff bruto). Ausente = sem reversão (ex.: diffs
+   * históricos, que não são alterações locais).
    */
-  onRevertHunk?: (target: string, patch: string) => void;
+  onRevertHunk?: (target: string, hunk: HunkRef) => void;
 }
 
 export function FileBlock({
@@ -298,6 +299,18 @@ export function FileBlock({
     [file],
   );
   const gaps = useMemo(() => computeGaps(file), [file]);
+  // Índice global de cada trecho no arquivo (ordem de documento): o backend
+  // reverte pelo índice. `offs[hi]` = nº de trechos antes do hunk `hi`; `total`
+  // = total no arquivo (o backend usa para detectar um diff defasado).
+  const blockOffsets = useMemo(() => {
+    const offs: number[] = [];
+    let acc = 0;
+    for (const h of file.hunks) {
+      offs.push(acc);
+      acc += changeBlocks(h).length;
+    }
+    return { offs, total: acc };
+  }, [file]);
 
   const [content, setContent] = useState<ContentRef | null>(null);
   const [loading, setLoading] = useState(false);
@@ -415,6 +428,7 @@ export function FileBlock({
     renderRow: (r: R, i: number) => React.ReactNode,
     blocks: ChangeBlock[],
     hunk: DiffHunk,
+    hi: number,
   ): React.ReactNode[] => {
     if (!onRevertHunk) return rows.map(renderRow);
     const out: React.ReactNode[] = [];
@@ -428,14 +442,20 @@ export function FileBlock({
       }
       const start = i;
       while (i < rows.length && isChange(rows[i])) i++;
-      const block = blocks[blk++];
+      const localIdx = blk++;
+      const block = blocks[localIdx];
       out.push(
         <div key={`blk-${start}`} className="group/blk relative">
           {rows.slice(start, i).map((r, j) => renderRow(r, start + j))}
           {block && (
             <button
               type="button"
-              onClick={() => onRevertHunk(file.path, buildHunkPatch(file, hunk, block))}
+              onClick={() =>
+                onRevertHunk(
+                  file.path,
+                  hunkRef(hunk, block, blockOffsets.offs[hi] + localIdx, blockOffsets.total),
+                )
+              }
               title="Reverter este trecho"
               aria-label="Reverter este trecho"
               className={
@@ -459,7 +479,7 @@ export function FileBlock({
 
   // Corpo de um hunk nas duas visões (unificado/split), já com as âncoras de
   // reversão por trecho.
-  const renderHunkBody = (hunk: DiffHunk): React.ReactNode[] => {
+  const renderHunkBody = (hunk: DiffHunk, hi: number): React.ReactNode[] => {
     const blocks = onRevertHunk ? changeBlocks(hunk) : [];
 
     if (mode === "split") {
@@ -494,7 +514,7 @@ export function FileBlock({
           />
         </div>
       );
-      return withRevertAnchors(rows, isChange, renderRow, blocks, hunk);
+      return withRevertAnchors(rows, isChange, renderRow, blocks, hunk, hi);
     }
 
     const rows = buildRows(hunk, rowOpts);
@@ -508,7 +528,7 @@ export function FileBlock({
         lineBg={lineBg}
       />
     );
-    return withRevertAnchors(rows, isChange, renderRow, blocks, hunk);
+    return withRevertAnchors(rows, isChange, renderRow, blocks, hunk, hi);
   };
 
   const tooLarge = file.additions + file.deletions > LARGE_FILE && !forceShow;
@@ -588,7 +608,7 @@ export function FileBlock({
           {file.hunks.map((hunk, hi) => (
             <Fragment key={hunk.header}>
               {renderTopGap(gaps[hi], hunk.header)}
-              {renderHunkBody(hunk)}
+              {renderHunkBody(hunk, hi)}
             </Fragment>
           ))}
           {renderBottomGap(gaps[file.hunks.length])}
