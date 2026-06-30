@@ -8,6 +8,7 @@ import {
   FolderOpen,
   GitMerge,
   Loader2,
+  Pencil,
   RefreshCw,
   RotateCcw,
   ShieldAlert,
@@ -19,6 +20,7 @@ import * as api from "@/lib/api";
 import { DiffViewer } from "@/components/diff/DiffViewer";
 import { ConflictDialog } from "@/components/dialogs/ConflictDialog";
 import { MergeEditor } from "@/components/merge/MergeEditor";
+import { CodeEditorModal } from "@/components/editor/CodeEditorModal";
 import { StatusLetter } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Checkbox } from "@/components/ui/Checkbox";
@@ -49,6 +51,12 @@ function isSelectable(e: StatusEntry): boolean {
   return COMMITTABLE.includes(e.item) || e.item === "unversioned" || e.props === "modified";
 }
 
+/** Arquivos que dá para abrir no editor embutido: um arquivo (não pasta) que
+ *  existe em disco — exclui apagados/sumidos, que não têm conteúdo local. */
+function isEditable(e: StatusEntry): boolean {
+  return !e.isDir && e.item !== "deleted" && e.item !== "missing";
+}
+
 function StatusRow({
   entry,
   checked,
@@ -60,6 +68,7 @@ function StatusRow({
   onRevert,
   onReveal,
   onResolve,
+  onEdit,
   onContext,
 }: {
   entry: StatusEntry;
@@ -72,6 +81,7 @@ function StatusRow({
   onRevert: () => void;
   onReveal: () => void;
   onResolve: () => void;
+  onEdit?: () => void;
   onContext: (e: React.MouseEvent) => void;
 }) {
   const isConflict = entry.item === "conflicted" || entry.treeConflicted;
@@ -162,6 +172,19 @@ function StatusRow({
             </button>
           </Tooltip>
         )}
+        {onEdit && (
+          <Tooltip label="Editar arquivo">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onEdit();
+              }}
+              className="flex size-6 items-center justify-center rounded text-faint hover:bg-panel-3 hover:text-ink"
+            >
+              <Pencil className="size-3.5" />
+            </button>
+          </Tooltip>
+        )}
         <Tooltip label="Abrir no sistema">
           <button
             onClick={(e) => {
@@ -186,12 +209,18 @@ function Changes({ wc }: { wc: WorkingCopy }) {
   const config = useConfigStore((s) => s.config);
   const confirmServerOps = config?.confirmServerOps ?? true;
   const tool = config?.externalDiffTool ?? "meld";
+  const editorCmd = config?.externalEditor || undefined;
 
   const [checked, setChecked] = useState<Set<string>>(new Set());
   const [highlight, setHighlight] = useState<string | null>(null);
   const [diff, setDiff] = useState("");
   const [diffLoading, setDiffLoading] = useState(false);
   const [ignoreWs, setIgnoreWs] = useState(false);
+  // Força recarregar o diff após salvar no editor embutido: o arquivo mudou em
+  // disco, mas o caminho destacado continua o mesmo.
+  const [diffNonce, setDiffNonce] = useState(0);
+  // Arquivo aberto no editor de código embutido.
+  const [editPath, setEditPath] = useState<string | null>(null);
   const [message, setMessage] = useState("");
   const [committing, setCommitting] = useState(false);
   const [checkingServer, setCheckingServer] = useState(false);
@@ -247,7 +276,7 @@ function Changes({ wc }: { wc: WorkingCopy }) {
     return () => {
       alive = false;
     };
-  }, [highlight, wc.path, ignoreWs]);
+  }, [highlight, wc.path, ignoreWs, diffNonce]);
 
   // Reconsulta o status local quando a janela volta ao foco: ao editar/criar
   // arquivos em outro programa e voltar ao Subversa, a lista atualiza sozinha
@@ -367,6 +396,22 @@ function Changes({ wc }: { wc: WorkingCopy }) {
         icon: <RotateCcw className="size-3.5" />,
         danger: true,
         onSelect: () => revertPaths([e.path]),
+      });
+    }
+
+    if (isEditable(e)) {
+      items.push({
+        id: "edit",
+        label: "Editar arquivo",
+        icon: <Pencil className="size-3.5" />,
+        onSelect: () => setEditPath(e.path),
+      });
+      items.push({
+        id: "edit-external",
+        label: "Abrir no editor externo",
+        icon: <ExternalLink className="size-3.5" />,
+        onSelect: () =>
+          tryRun(() => api.openInEditor(e.path, editorCmd), "Não consegui abrir o editor externo"),
       });
     }
 
@@ -536,6 +581,7 @@ function Changes({ wc }: { wc: WorkingCopy }) {
                     ? setMergePath(e.path)
                     : setConflictPath(e.path)
                 }
+                onEdit={isEditable(e) ? () => setEditPath(e.path) : undefined}
                 onContext={(ev) => {
                   setHighlight(e.path);
                   ctx.open(ev, itemsFor(e));
@@ -610,10 +656,18 @@ function Changes({ wc }: { wc: WorkingCopy }) {
             )}
           </div>
           {highlightEntry && (
-            <Button variant="ghost" size="sm" onClick={() => tryRun(() => api.openExternalDiff(wc.path, tool), "Não consegui abrir o diff externo")}>
-              <ExternalLink className="size-3.5" />
-              {tool}
-            </Button>
+            <div className="flex shrink-0 items-center gap-1.5">
+              {isEditable(highlightEntry) && (
+                <Button variant="ghost" size="sm" onClick={() => setEditPath(highlightEntry.path)}>
+                  <Pencil className="size-3.5" />
+                  Editar
+                </Button>
+              )}
+              <Button variant="ghost" size="sm" onClick={() => tryRun(() => api.openExternalDiff(wc.path, tool), "Não consegui abrir o diff externo")}>
+                <ExternalLink className="size-3.5" />
+                {tool}
+              </Button>
+            </div>
           )}
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto p-4">
@@ -653,6 +707,18 @@ function Changes({ wc }: { wc: WorkingCopy }) {
           )}
         </div>
       </div>
+
+      <CodeEditorModal
+        open={!!editPath}
+        path={editPath}
+        relPath={entries.find((e) => e.path === editPath)?.relPath}
+        onClose={() => setEditPath(null)}
+        onSaved={async () => {
+          await reload(false);
+          await refreshOne(wc.path);
+          setDiffNonce((n) => n + 1);
+        }}
+      />
 
       <MergeEditor
         open={!!mergePath}

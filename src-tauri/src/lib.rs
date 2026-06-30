@@ -91,6 +91,9 @@ pub fn run() {
             svn::commands::test_connection,
             svn::commands::reveal_in_file_manager,
             svn::commands::open_external_diff,
+            svn::commands::read_text_file,
+            svn::commands::write_text_file,
+            svn::commands::open_in_editor,
             svn::commands::suggested_base_dir,
             // registro / auditoria
             svn::commands::get_command_log,

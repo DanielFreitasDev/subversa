@@ -255,6 +255,8 @@ export interface AppConfig {
   sshMode: SshMode;
   theme: "dark" | "light" | "system";
   externalDiffTool: string;
+  /** Editor de código externo (ex.: `code`, `subl`). Vazio = app padrão do sistema. */
+  externalEditor: string;
   verbose: boolean;
   confirmServerOps: boolean;
   /**

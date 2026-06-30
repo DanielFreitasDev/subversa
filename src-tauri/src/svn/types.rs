@@ -358,6 +358,10 @@ pub struct AppConfig {
     pub theme: String,
     /// Ferramenta de diff externa preferida (ex.: `meld`).
     pub external_diff_tool: String,
+    /// Editor de código externo preferido (ex.: `code`, `subl`, `gedit`). Vazio =
+    /// abrir o arquivo no aplicativo padrão do sistema (`xdg-open`).
+    #[serde(default)]
+    pub external_editor: String,
     /// Mostrar o comando svn equivalente em cada operação.
     pub verbose: bool,
     /// Pedir confirmação antes de operações que escrevem no servidor.
@@ -401,6 +405,7 @@ impl Default for AppConfig {
             ssh_mode: SshMode::Auto,
             theme: "dark".into(),
             external_diff_tool: "meld".into(),
+            external_editor: String::new(),
             verbose: false,
             confirm_server_ops: true,
             backup_mode: default_backup_mode(),

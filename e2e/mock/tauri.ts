@@ -46,6 +46,7 @@ export function buildFixtures(theme: Theme): MockData {
     sshMode: "auto",
     theme,
     externalDiffTool: "meld",
+    externalEditor: "",
     verbose: false,
     confirmServerOps: true,
     backupMode: "ask",
@@ -377,7 +378,11 @@ export function tauriInit(fx: MockData) {
         return ok("svn info " + fx.config.repoBase);
       case "reveal_in_file_manager":
       case "open_external_diff":
+      case "open_in_editor":
+      case "write_text_file":
         return null;
+      case "read_text_file":
+        return "package br.tjsc.sna.processo;\n\npublic class ProcessoService {\n  // editar aqui…\n}\n";
       case "get_command_log":
         return fx.commandLog;
       case "clear_command_log":

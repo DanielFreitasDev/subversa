@@ -68,6 +68,18 @@ export const HELP = {
     note: "“Salvar resolução” só libera quando não sobrar nenhum conflito pendente. Aí o app grava o arquivo e marca como resolvido.",
   },
 
+  editor: {
+    title: "Editar arquivo",
+    intro:
+      "Abre o arquivo da sua cópia local num editor de código aqui no app, para ajustes rápidos sem sair do Subversa. É o conteúdo atual do arquivo (com as suas alterações), não a versão do servidor.",
+    points: [
+      "Salvar (ou Ctrl+S) grava no disco — não envia ao servidor. O arquivo passa a “modificado” na lista; publicar continua sendo o commit.",
+      "Tem realce de sintaxe, busca (Ctrl+F), múltiplos cursores e desfazer/refazer, como um editor de código de verdade.",
+      "Prefere outro programa? “Abrir no editor externo” usa o editor configurado nas Preferências (ou o app padrão do sistema).",
+    ],
+    note: "Arquivos binários ou muito grandes não abrem aqui — use o editor externo.",
+  },
+
   repoLocation: {
     title: "Localização de repositório",
     intro:
@@ -233,6 +245,7 @@ export const HELP = {
       "“Confirmar operações no servidor”: pede confirmação antes de ações que mudam o servidor (commit, merge, switch…). Recomendado deixar ligado.",
       "“Modo verboso”: mostra o comando svn equivalente a cada ação — útil para aprender ou conferir.",
       "“Ferramenta de diff externa”: o programa aberto para comparar/resolver arquivos (ex.: meld, kdiff3).",
+      "“Editor de código externo”: o programa aberto em “Abrir no editor externo” (ex.: code, subl). Vazio = o app padrão do sistema.",
     ],
   },
 

@@ -210,6 +210,19 @@ export const revealInFileManager = (path: string) =>
 export const openExternalDiff = (target: string, tool?: string) =>
   invoke<void>("open_external_diff", { target, tool: tool ?? null });
 
+// --- edição de arquivos da cópia de trabalho -------------------------------
+
+/** Lê um arquivo da cópia de trabalho (do disco) como texto, para o editor embutido. */
+export const readTextFile = (path: string) => invoke<string>("read_text_file", { path });
+
+/** Grava o conteúdo editado de volta no arquivo (gravação atômica em disco). */
+export const writeTextFile = (path: string, content: string) =>
+  invoke<void>("write_text_file", { path, content });
+
+/** Abre um arquivo no editor de código externo (ou no app padrão do sistema). */
+export const openInEditor = (path: string, editor?: string) =>
+  invoke<void>("open_in_editor", { path, editor: editor ?? null });
+
 export const suggestedBaseDir = () => invoke<string>("suggested_base_dir");
 
 // --- registro de comandos (auditoria) --------------------------------------

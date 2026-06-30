@@ -80,6 +80,7 @@ export function SettingsView() {
 
   const [host, setHost] = useState(config?.host ?? "");
   const [tool, setTool] = useState(config?.externalDiffTool ?? "meld");
+  const [editor, setEditor] = useState(config?.externalEditor ?? "");
   const [keep, setKeep] = useState(String(config?.backupKeep ?? 5));
   const [backupDir, setBackupDir] = useState(config?.backupDir ?? "");
   const [projects, setProjects] = useState<Project[]>(config?.projects ?? []);
@@ -102,6 +103,8 @@ export function SettingsView() {
     if (!prev || prev.host !== config.host) setHost(config.host);
     if (!prev || prev.externalDiffTool !== config.externalDiffTool)
       setTool(config.externalDiffTool);
+    if (!prev || prev.externalEditor !== config.externalEditor)
+      setEditor(config.externalEditor);
     if (!prev || prev.repoBase !== config.repoBase) setRepoBase(config.repoBase);
     if (!prev || prev.backupKeep !== config.backupKeep) setKeep(String(config.backupKeep));
     if (!prev || prev.backupDir !== config.backupDir) setBackupDir(config.backupDir);
@@ -422,6 +425,15 @@ export function SettingsView() {
               value={tool}
               onChange={(e) => setTool(e.target.value)}
               onBlur={() => tool !== config.externalDiffTool && save({ externalDiffTool: tool })}
+              className="w-40 text-[12px]"
+            />
+          </Row>
+          <Row label="Editor de código externo" hint="ex.: code, subl, gedit · vazio = app padrão">
+            <Input
+              value={editor}
+              onChange={(e) => setEditor(e.target.value)}
+              onBlur={() => editor !== config.externalEditor && save({ externalEditor: editor })}
+              placeholder="(app padrão)"
               className="w-40 text-[12px]"
             />
           </Row>

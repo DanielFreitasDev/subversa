@@ -1359,7 +1359,10 @@ pub async fn conflict_details(
     let parent = abs.parent().map(Path::to_path_buf).unwrap_or_default();
     let has_tree_conflict = entry.tree_conflict.is_some();
     let conflict = entry.conflict;
-    let has_property_conflict = conflict.as_ref().map(|c| c.prop_file.is_some()).unwrap_or(false);
+    let has_property_conflict = conflict
+        .as_ref()
+        .map(|c| c.prop_file.is_some())
+        .unwrap_or(false);
 
     let side = |name: Option<&str>| -> (Option<String>, bool, Option<String>) {
         match name {
@@ -1371,7 +1374,8 @@ pub async fn conflict_details(
         }
     };
 
-    let (base, base_bin, base_rev) = side(conflict.as_ref().and_then(|c| c.prev_base_file.as_deref()));
+    let (base, base_bin, base_rev) =
+        side(conflict.as_ref().and_then(|c| c.prev_base_file.as_deref()));
     let (mine, mine_bin, _) = side(conflict.as_ref().and_then(|c| c.prev_wc_file.as_deref()));
     let (theirs, theirs_bin, theirs_rev) =
         side(conflict.as_ref().and_then(|c| c.cur_base_file.as_deref()));
@@ -1442,7 +1446,12 @@ pub async fn resolve_with_content(
     let abs = validate_local_path(&path, &cfg, "arquivo", false, false)?;
     write_atomic(&abs, content.as_bytes())?;
     let abs_str = abs.to_string_lossy().to_string();
-    run(&["resolve", "--accept", "working", "--", &abs_str], None, mode).await
+    run(
+        &["resolve", "--accept", "working", "--", &abs_str],
+        None,
+        mode,
+    )
+    .await
 }
 
 #[tauri::command]
@@ -1735,6 +1744,90 @@ pub fn open_external_diff(
     })?;
     let mut cmd = std::process::Command::new(&tool);
     cmd.arg(&target);
+    spawn_detached(cmd).map_err(|e| format!("não consegui abrir {tool}: {e}"))
+}
+
+// ---------------------------------------------------------------------------
+// Edição de arquivos da cópia de trabalho (editor embutido / externo)
+// ---------------------------------------------------------------------------
+
+/// Lê o conteúdo de um arquivo da cópia de trabalho (do disco) como texto UTF-8,
+/// para edição no editor embutido. Diferente de [`cat_file`] (que lê a BASE do
+/// SVN), este traz o estado ATUAL do arquivo — com as alterações locais. Recusa
+/// binários e arquivos grandes demais; nesses casos a UI oferece o editor externo.
+#[tauri::command]
+pub async fn read_text_file(path: String, state: State<'_, AppState>) -> Result<String, String> {
+    let (_, cfg) = config_snapshot(&state);
+    let abs = validate_local_path(&path, &cfg, "arquivo", false, false)?;
+    let meta = std::fs::metadata(&abs).map_err(|e| format!("não consegui abrir o arquivo: {e}"))?;
+    if meta.is_dir() {
+        return Err("isto é uma pasta, não um arquivo.".into());
+    }
+    const MAX_EDIT_BYTES: u64 = 5 * 1024 * 1024;
+    if meta.len() > MAX_EDIT_BYTES {
+        return Err(
+            "arquivo grande demais para o editor embutido (acima de 5 MiB). Use o editor externo."
+                .into(),
+        );
+    }
+    let bytes = std::fs::read(&abs).map_err(|e| format!("não consegui ler o arquivo: {e}"))?;
+    // Heurística de binário igual à do SVN: um byte NUL no começo indica binário.
+    if bytes.iter().take(8000).any(|&b| b == 0) {
+        return Err(
+            "arquivo binário — não dá para editar como texto. Use o editor externo.".into(),
+        );
+    }
+    String::from_utf8(bytes)
+        .map_err(|_| "o arquivo não é texto UTF-8 válido — use o editor externo.".to_string())
+}
+
+/// Grava o conteúdo editado de volta no arquivo da cópia de trabalho, de forma
+/// atômica (temp + rename). NÃO toca no SVN: só altera o arquivo em disco — o
+/// `svn status` volta como "modificado" e o usuário decide se commita. O `content`
+/// já vem do editor com o EOL correto.
+#[tauri::command]
+pub async fn write_text_file(
+    path: String,
+    content: String,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let (_, cfg) = config_snapshot(&state);
+    let abs = validate_local_path(&path, &cfg, "arquivo", false, false)?;
+    if !abs.is_file() {
+        return Err("o arquivo não existe mais.".into());
+    }
+    write_atomic(&abs, content.as_bytes())
+}
+
+/// Abre um arquivo no editor de código externo configurado (Ajustes). Sem editor
+/// definido, usa o aplicativo padrão do sistema (`xdg-open`). O nome do binário é
+/// validado antes de executar (defesa contra IPC malicioso), como no diff externo.
+#[tauri::command]
+pub fn open_in_editor(
+    path: String,
+    editor: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let configured = state
+        .config
+        .lock()
+        .map(|c| c.external_editor.clone())
+        .unwrap_or_default();
+    let raw = match editor {
+        Some(t) if !t.trim().is_empty() => t,
+        _ => configured,
+    };
+    let raw = raw.trim().to_string();
+    if raw.is_empty() {
+        // Sem editor configurado: abre no aplicativo padrão do sistema.
+        let mut cmd = std::process::Command::new("xdg-open");
+        cmd.arg(&path);
+        return spawn_detached(cmd).map_err(|e| format!("não consegui abrir o arquivo: {e}"));
+    }
+    let tool = sanitize_tool(&raw)
+        .ok_or_else(|| format!("editor inválido: {raw:?} (use só o nome do binário, ex.: code)"))?;
+    let mut cmd = std::process::Command::new(&tool);
+    cmd.arg(&path);
     spawn_detached(cmd).map_err(|e| format!("não consegui abrir {tool}: {e}"))
 }
 

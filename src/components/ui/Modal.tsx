@@ -73,8 +73,9 @@ export function Modal({
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
-      // Só o modal do topo da pilha fecha com Esc.
-      if (e.key === "Escape" && !locked && modalStack[modalStack.length - 1] === tokenRef.current) {
+      // Só o modal do topo da pilha fecha com Esc — e não quando algum controle
+      // interno já tratou a tecla (ex.: fechar a busca do editor de código).
+      if (e.key === "Escape" && !e.defaultPrevented && !locked && modalStack[modalStack.length - 1] === tokenRef.current) {
         onClose();
       }
     };
