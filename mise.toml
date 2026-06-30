@@ -1,0 +1,30 @@
+# Toolchains do Subversa — gerenciadas pelo mise (https://mise.jdx.dev)
+#
+# Instale tudo de uma vez:   mise trust && mise install
+#
+# ATENÇÃO: o mise gerencia apenas Node e Rust. As bibliotecas de sistema
+# (libwebkit2gtk-4.1-dev, libsoup-3.0-dev, build-essential, libssl-dev,
+# libgtk-3-dev, librsvg2-dev, libayatana-appindicator3-dev) e os requisitos
+# de runtime (subversion, sshpass) NÃO são instalados pelo mise — use o apt
+# da distro. Veja README.md / CLAUDE.md.
+
+[tools]
+node = "20.20.2"   # package.json: engines.node >= 20
+rust = "1.96.0"    # Cargo.toml: rust-version = 1.77 (mínimo) — inclui cargo, clippy, rustfmt
+
+[tasks.dev]
+description = "App completo (Vite HMR + backend Rust em debug)"
+run = "npm run tauri dev"
+
+[tasks.build]
+description = "Binário de produção + pacotes (.deb e AppImage)"
+run = "npm run tauri build"
+
+[tasks.check]
+description = "Typecheck frontend + cargo fmt/clippy + testes Rust"
+run = "npm run check"
+
+# Janela em branco no Linux/X11? Descomente para o `mise run dev`:
+# [env]
+# WEBKIT_DISABLE_DMABUF_RENDERER = "1"
+# WEBKIT_DISABLE_COMPOSITING_MODE = "1"
