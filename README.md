@@ -106,12 +106,37 @@ Veja **[docs/ARQUITETURA.md](docs/ARQUITETURA.md)** para o detalhamento.
 
 ## Pré-requisitos
 
+### Para usar o app (runtime)
+
 - **Subversion** (`svn`) 1.8+ no PATH — testado com 1.14.
 - **sshpass** (para autenticar `svn+ssh` por senha): `sudo apt install sshpass`.
 - A senha em `$SSHPASS` (já vem do `/etc/environment` no seu setup), **ou** uma chave
   SSH/`ssh-agent` configurada no servidor.
-- Para **desenvolver/compilar**: Node 20+, Rust (stable) e as libs do Tauri
-  (`webkit2gtk-4.1`, `libsoup-3.0`).
+
+### Para desenvolver/compilar
+
+São duas categorias de dependência — **toolchains** (Node + Rust) e **bibliotecas
+de sistema** (C/C++ do Tauri). O `mise` cuida das toolchains; as libs nativas e o
+`svn`/`sshpass` vêm do gerenciador de pacotes da distro.
+
+**1. Bibliotecas de sistema + runtime** (Ubuntu/Debian — *não* são geridas pelo mise):
+
+```bash
+sudo apt install -y libwebkit2gtk-4.1-dev libsoup-3.0-dev build-essential \
+  libssl-dev libgtk-3-dev librsvg2-dev libayatana-appindicator3-dev \
+  subversion sshpass
+```
+
+**2. Toolchains** — Node 20+ e Rust stable (≥ 1.77). A forma recomendada é o
+**[mise](https://mise.jdx.dev)**, que lê o `mise.toml` do projeto e instala as
+versões exatas fixadas (**Node 20.20.2** + **Rust 1.96.0**, com `cargo`, `clippy` e
+`rustfmt`) de uma vez:
+
+```bash
+mise trust && mise install
+```
+
+> Sem mise? Instale manualmente Node 20+ (nvm / nodejs.org) e Rust stable (rustup).
 
 ---
 
@@ -125,6 +150,9 @@ npm run tauri dev
 
 > Em alguns ambientes X11 pode ser necessário desativar a aceleração do WebKit:
 > `WEBKIT_DISABLE_DMABUF_RENDERER=1 WEBKIT_DISABLE_COMPOSITING_MODE=1 npm run tauri dev`
+
+> Com o **mise**, o projeto traz tasks prontas que encapsulam os comandos acima:
+> `mise run dev` (este), `mise run build` (produção) e `mise run check` (qualidade).
 
 ## Qualidade
 
