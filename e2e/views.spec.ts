@@ -87,6 +87,34 @@ test.describe("tema escuro", () => {
     await expect(page.getByRole("menuitem", { name: "Reverter este arquivo" })).toHaveCount(0);
   });
 
+  test('alterações: reverter um trecho (faixa ">>" estilo IntelliJ entre os painéis)', async ({ page }) => {
+    await gotoApp(page);
+    await openFirstWc(page);
+    // O arquivo modificado já vem destacado, com o diff à direita.
+    await expect(page.getByText("src/processo/ProcessoService.java").first()).toBeVisible();
+
+    // Lado a lado é o padrão de um arquivo modificado: a faixa ">>" fica no vão
+    // central, visível, uma por trecho alterado (o diff de exemplo tem 2 trechos).
+    const btns = page.getByRole("button", { name: "Reverter este trecho" });
+    await expect(btns.first()).toBeVisible();
+    expect(await btns.count()).toBe(2);
+
+    // Clicar dispara a reversão do trecho (svn patch --reverse-diff no backend).
+    await btns.first().click();
+    await expect(page.getByText("Trecho revertido")).toBeVisible();
+  });
+
+  test("alterações: sem reverter-trecho ao ignorar espaços", async ({ page }) => {
+    await gotoApp(page);
+    await openFirstWc(page);
+    // Com o diff real há botões de reverter trecho…
+    await expect(page.getByRole("button", { name: "Reverter este trecho" }).first()).toBeAttached();
+    // …mas no modo "Ignorar espaços" o patch viria com o contexto da base (não
+    // casaria byte a byte), então a ação some.
+    await page.getByRole("button", { name: /Ignorar espaços/ }).click();
+    await expect(page.getByRole("button", { name: "Reverter este trecho" })).toHaveCount(0);
+  });
+
   test("editor de conflitos em 3 painéis", async ({ page }) => {
     await gotoApp(page);
     await openFirstWc(page);

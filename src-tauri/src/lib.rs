@@ -67,6 +67,7 @@ pub fn run() {
             svn::commands::commit,
             svn::commands::svn_add,
             svn::commands::revert,
+            svn::commands::revert_hunk,
             svn::commands::remove,
             svn::commands::create_branch,
             svn::commands::switch_wc,

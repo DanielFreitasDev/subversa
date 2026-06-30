@@ -331,6 +331,21 @@ function Changes({ wc }: { wc: WorkingCopy }) {
     if (await revertAll(wc)) await reload(false);
   };
 
+  // Reverte um único trecho do arquivo destacado (a setinha estilo IntelliJ).
+  // Ação precisa e localizada — sem modal de confirmação; ao concluir, recarrega
+  // a lista e o diff (o trecho some; se era a última alteração, o arquivo some).
+  // O `patch` vem montado do diff exibido, daí só liberarmos isto com o diff real
+  // (ver o gate `!ignoreWs` no DiffViewer): um diff "-w" mostra o contexto com o
+  // espaçamento da base, que não casaria com o arquivo em disco no `svn patch`.
+  const revertHunk = async (target: string, patch: string) => {
+    const out = await tryRun(() => api.revertHunk(wc.path, target, patch), "Falha ao reverter o trecho");
+    if (out && reportOutput(out, "Trecho revertido")) {
+      await reload(false);
+      await refreshOne(wc.path);
+      setDiffNonce((n) => n + 1);
+    }
+  };
+
   // Coloca um arquivo novo (não versionado) sob o SVN — passa a "Adicionado".
   const addToSvn = async (path: string) => {
     const out = await tryRun(() => api.svnAdd([path]), "Falha ao adicionar ao SVN");
@@ -690,6 +705,9 @@ function Changes({ wc }: { wc: WorkingCopy }) {
               onToggleIgnoreWs={setIgnoreWs}
               externalTool={tool}
               onOpenExternal={() => tryRun(() => api.openExternalDiff(wc.path, tool), "Não consegui abrir o diff externo")}
+              // Reverter trecho só no diff real (sem "ignorar espaços") e em
+              // arquivos modificados versionados — onde um patch reverso faz sentido.
+              onRevertHunk={highlightEntry?.item === "modified" && !ignoreWs ? revertHunk : undefined}
               onExpandContext={
                 highlight &&
                 highlightEntry &&

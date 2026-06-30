@@ -411,6 +411,7 @@ export function tauriInit(fx: MockData) {
       case "backups_dir":
         return "/home/daniel/.cache/subversa/backups";
       case "checkout": case "update": case "commit": case "svn_add": case "revert":
+      case "revert_hunk":
       case "remove": case "create_branch": case "switch_wc": case "merge": case "resolve":
       case "cleanup": case "delete_remote": case "export_path": case "import_path":
       case "make_dir": case "move_remote": case "reverse_merge": case "set_revprop_message":

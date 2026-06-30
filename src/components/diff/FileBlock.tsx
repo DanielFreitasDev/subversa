@@ -3,6 +3,7 @@ import {
   AlertTriangle,
   ChevronDown,
   ChevronRight,
+  ChevronsRight,
   ChevronsUpDown,
   Copy,
   ExternalLink,
@@ -12,7 +13,15 @@ import {
   Plus,
 } from "lucide-react";
 
-import type { DiffFile, DiffHunk, DiffLine, DiffLineType } from "@/lib/diff";
+import {
+  buildHunkPatch,
+  changeBlocks,
+  type ChangeBlock,
+  type DiffFile,
+  type DiffHunk,
+  type DiffLine,
+  type DiffLineType,
+} from "@/lib/diff";
 import { cn } from "@/lib/utils";
 import { toast } from "@/store/toast";
 import type { DiffMode } from "@/store/ui";
@@ -243,6 +252,13 @@ export interface FileBlockProps {
   externalTool?: string;
   onOpenExternal?: () => void;
   onExpandContext?: (file: DiffFile) => Promise<ContentRef | null>;
+  /**
+   * Habilita o botão de reverter trecho (estilo IntelliJ) em cada bloco de
+   * alteração. Recebe o caminho do arquivo e o patch mínimo daquele trecho (no
+   * sentido direto — o backend o aplica em reverso). Ausente = sem reversão (ex.:
+   * diffs históricos, que não são alterações locais).
+   */
+  onRevertHunk?: (target: string, patch: string) => void;
 }
 
 export function FileBlock({
@@ -254,6 +270,7 @@ export function FileBlock({
   externalTool,
   onOpenExternal,
   onExpandContext,
+  onRevertHunk,
 }: FileBlockProps) {
   // Arquivos enormes não são tokenizados (evita travar o realce de sintaxe).
   const tokens = useMemo(
@@ -368,6 +385,109 @@ export function FileBlock({
     );
   };
 
+  // Agrupa as linhas de cada bloco de alteração e ancora nele o botão de reverter
+  // trecho (revelado ao passar o mouse). Sem `onRevertHunk`, devolve as linhas
+  // soltas — layout idêntico ao anterior. Os blocos de alteração saem na mesma
+  // ordem em `changeBlocks(hunk)` e nas linhas renderizadas, então casam 1:1.
+  const withRevertAnchors = <R,>(
+    rows: R[],
+    isChange: (r: R) => boolean,
+    renderRow: (r: R, i: number) => React.ReactNode,
+    blocks: ChangeBlock[],
+    hunk: DiffHunk,
+  ): React.ReactNode[] => {
+    if (!onRevertHunk) return rows.map(renderRow);
+    const out: React.ReactNode[] = [];
+    let i = 0;
+    let blk = 0;
+    while (i < rows.length) {
+      if (!isChange(rows[i])) {
+        out.push(<Fragment key={`ctx-${i}`}>{renderRow(rows[i], i)}</Fragment>);
+        i++;
+        continue;
+      }
+      const start = i;
+      while (i < rows.length && isChange(rows[i])) i++;
+      const block = blocks[blk++];
+      out.push(
+        <div key={`blk-${start}`} className="group/blk relative">
+          {rows.slice(start, i).map((r, j) => renderRow(r, start + j))}
+          {block && (
+            <button
+              type="button"
+              onClick={() => onRevertHunk(file.path, buildHunkPatch(file, hunk, block))}
+              title="Reverter este trecho"
+              aria-label="Reverter este trecho"
+              className={
+                mode === "split"
+                  ? // Faixa no vão central entre os painéis (estilo IntelliJ):
+                    // atravessa toda a altura do bloco, com a setinha ">>" apontando
+                    // da base (esquerda) para o trabalho (direita) = desfazer.
+                    "absolute inset-y-0 left-1/2 z-[5] flex w-6 -translate-x-1/2 items-center justify-center border-x border-info/30 bg-info/15 text-info transition-colors hover:bg-info/35 group-hover/blk:bg-info/25"
+                  : // Unificado não tem vão central: botão flutuante à direita, no hover.
+                    "absolute right-1.5 top-1 z-[5] flex size-6 items-center justify-center rounded-md border border-line bg-panel-3 text-muted opacity-0 shadow-md transition-all hover:border-info/50 hover:bg-info/10 hover:text-info focus-visible:opacity-100 group-hover/blk:opacity-100"
+              }
+            >
+              <ChevronsRight className="size-3.5" />
+            </button>
+          )}
+        </div>,
+      );
+    }
+    return out;
+  };
+
+  // Corpo de um hunk nas duas visões (unificado/split), já com as âncoras de
+  // reversão por trecho.
+  const renderHunkBody = (hunk: DiffHunk): React.ReactNode[] => {
+    const blocks = onRevertHunk ? changeBlocks(hunk) : [];
+
+    if (mode === "split") {
+      const rows = buildSplitRows(hunk);
+      const isChange = (r: (typeof rows)[number]) =>
+        r.left?.line.type === "del" || r.right?.line.type === "add";
+      // Com reversão por trecho, abre um vão central (onde mora a faixa ">>", como
+      // no IntelliJ); sem ela, mantém o layout de 4 colunas de sempre.
+      const gutter = !!onRevertHunk;
+      const cols = gutter
+        ? "grid-cols-[3rem_minmax(0,1fr)_1.5rem_3rem_minmax(0,1fr)]"
+        : "grid-cols-[3rem_minmax(0,1fr)_3rem_minmax(0,1fr)]";
+      const renderRow = (row: (typeof rows)[number], ri: number) => (
+        <div
+          key={ri}
+          // marca só o início de cada bloco de alteração (navegação por teclado)
+          data-change={(isChange(row) && (ri === 0 || !isChange(rows[ri - 1]))) || undefined}
+          className={cn("grid font-mono text-[12.5px] leading-[1.55]", cols)}
+        >
+          <SplitSide
+            cell={row.left}
+            spans={row.left ? spansFor(row.left.line, row.left.segments) : null}
+            side="left"
+          />
+          {gutter && <span className="border-l border-line/60 bg-panel" />}
+          <SplitSide
+            cell={row.right}
+            spans={row.right ? spansFor(row.right.line, row.right.segments) : null}
+            side="right"
+          />
+        </div>
+      );
+      return withRevertAnchors(rows, isChange, renderRow, blocks, hunk);
+    }
+
+    const rows = buildRows(hunk);
+    const isChange = (r: (typeof rows)[number]) => r.line.type !== "context";
+    const renderRow = (row: (typeof rows)[number], ri: number) => (
+      <UnifiedRow
+        key={ri}
+        line={row.line}
+        spans={spansFor(row.line, row.segments)}
+        change={row.line.type !== "context" && (ri === 0 || rows[ri - 1].line.type === "context")}
+      />
+    );
+    return withRevertAnchors(rows, isChange, renderRow, blocks, hunk);
+  };
+
   const tooLarge = file.additions + file.deletions > LARGE_FILE && !forceShow;
 
   return (
@@ -445,42 +565,7 @@ export function FileBlock({
           {file.hunks.map((hunk, hi) => (
             <Fragment key={hunk.header}>
               {renderTopGap(gaps[hi], hunk.header)}
-              {mode === "split"
-                ? (() => {
-                    const rows = buildSplitRows(hunk);
-                    const isChange = (r: (typeof rows)[number]) =>
-                      r.left?.line.type === "del" || r.right?.line.type === "add";
-                    return rows.map((row, ri) => (
-                      <div
-                        key={ri}
-                        // marca só o início de cada bloco de alteração (navegação por teclado)
-                        data-change={(isChange(row) && (ri === 0 || !isChange(rows[ri - 1]))) || undefined}
-                        className="grid grid-cols-[3rem_minmax(0,1fr)_3rem_minmax(0,1fr)] font-mono text-[12.5px] leading-[1.55]"
-                      >
-                        <SplitSide
-                          cell={row.left}
-                          spans={row.left ? spansFor(row.left.line, row.left.segments) : null}
-                          side="left"
-                        />
-                        <SplitSide
-                          cell={row.right}
-                          spans={row.right ? spansFor(row.right.line, row.right.segments) : null}
-                          side="right"
-                        />
-                      </div>
-                    ));
-                  })()
-                : (() => {
-                    const rows = buildRows(hunk);
-                    return rows.map((row, ri) => (
-                      <UnifiedRow
-                        key={ri}
-                        line={row.line}
-                        spans={spansFor(row.line, row.segments)}
-                        change={row.line.type !== "context" && (ri === 0 || rows[ri - 1].line.type === "context")}
-                      />
-                    ));
-                  })()}
+              {renderHunkBody(hunk)}
             </Fragment>
           ))}
           {renderBottomGap(gaps[file.hunks.length])}

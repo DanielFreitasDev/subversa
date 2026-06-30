@@ -24,6 +24,13 @@ export interface DiffViewerProps {
   onOpenExternal?: () => void;
   /** Resolve o conteúdo de referência de um arquivo p/ expandir contexto. */
   onExpandContext?: (file: DiffFile) => Promise<ContentRef | null>;
+  /**
+   * Habilita reverter um trecho (change-block) — a setinha ">>" estilo IntelliJ.
+   * Recebe o caminho do arquivo e o patch mínimo do trecho (sentido direto).
+   * Só faz sentido para alterações locais (aba Alterações); omitir nos diffs
+   * históricos.
+   */
+  onRevertHunk?: (target: string, patch: string) => void;
   /** Mostra o botão de abrir em janela ampliada (off na cópia já ampliada). */
   expandable?: boolean;
   /** Título/subtítulo da janela ampliada (padrão: "Diferenças" + caminho). */
@@ -61,6 +68,7 @@ export function DiffViewer({
   externalTool,
   onOpenExternal,
   onExpandContext,
+  onRevertHunk,
   expandable = true,
   title,
   subtitle,
@@ -220,6 +228,7 @@ export function DiffViewer({
             externalTool={externalTool}
             onOpenExternal={onOpenExternal}
             onExpandContext={onExpandContext}
+            onRevertHunk={onRevertHunk}
           />
         );
       })}
@@ -243,6 +252,7 @@ export function DiffViewer({
               externalTool={externalTool}
               onOpenExternal={onOpenExternal}
               onExpandContext={onExpandContext}
+              onRevertHunk={onRevertHunk}
               expandable={false}
             />
           </div>

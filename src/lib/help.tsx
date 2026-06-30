@@ -136,6 +136,7 @@ export const HELP = {
       "No SVN, commitar já envia para o servidor na hora — não existe um “push” separado.",
       "Clique em um arquivo para ver, ao lado, exatamente o que mudou (o diff).",
       "“Reverter” descarta as mudanças locais, voltando ao que estava antes: use o ícone (ou o botão direito do mouse) no arquivo, “Reverter selecionados” para os marcados, ou “Reverter tudo” para toda a working copy.",
+      "Para desfazer só um pedaço: no diff, passe o mouse sobre um trecho alterado e clique na setinha de reverter — volta apenas aquele trecho, sem mexer no resto do arquivo (como o “>>” do IntelliJ).",
     ],
     note: "Letras: M = modificado, A = novo, D = apagado, C = conflito. Conflitos precisam ser resolvidos antes de commitar.",
   },

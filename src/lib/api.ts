@@ -93,6 +93,12 @@ export const svnAdd = (paths: string[]) => invoke<CommandOutput>("svn_add", { pa
 export const revert = (paths: string[], recursive = false) =>
   invoke<CommandOutput>("revert", { paths, recursive });
 
+/** Reverte um único trecho (change-block): aplica em reverso um patch mínimo
+ *  daquele trecho via `svn patch --reverse-diff`. `target` é o caminho absoluto
+ *  do arquivo (para limpar um eventual `.svnpatch.rej`). */
+export const revertHunk = (wcPath: string, target: string, patch: string) =>
+  invoke<CommandOutput>("revert_hunk", { wcPath, target, patch });
+
 export const remove = (paths: string[], keepLocal = false, force = false) =>
   invoke<CommandOutput>("remove", { paths, keepLocal, force });
 

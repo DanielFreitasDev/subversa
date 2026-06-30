@@ -1070,6 +1070,75 @@ pub async fn revert(
     run(&refs, None, mode).await
 }
 
+/// Reverte um único **trecho** (change-block) de um arquivo modificado da working
+/// copy, sem tocar nos demais trechos do mesmo arquivo — o equivalente à setinha
+/// `>>` do IntelliJ.
+///
+/// O `patch` é um diff unificado mínimo (cabeçalho + um hunk) no sentido
+/// **direto** (base→trabalho) contendo só aquele trecho, montado no frontend a
+/// partir do diff já exibido. Aplicamos com `svn patch --reverse-diff`, que o
+/// desfaz: o `--reverse-diff` evita ter que inverter `+`/`-` à mão e preserva o
+/// tratamento de EOL/quebra-final do próprio Subversion.
+///
+/// Cuidado importante: o `svn patch` retorna **0 mesmo quando o trecho não casa**
+/// (o arquivo mudou desde que o diff foi gerado). Nesse caso ele imprime a letra
+/// de status `C`, escreve `<arquivo>.svnpatch.rej` ao lado do alvo e segue. Aqui
+/// detectamos a rejeição, removemos o `.rej` (senão ele apareceria como arquivo
+/// novo na lista de alterações) e devolvemos falha com uma dica — para a UI não
+/// anunciar um sucesso falso.
+#[tauri::command]
+pub async fn revert_hunk(
+    wc_path: String,
+    target: String,
+    patch: String,
+    state: State<'_, AppState>,
+) -> Result<CommandOutput, String> {
+    let (mode, cfg) = config_snapshot(&state);
+    let wc = validate_local_path(&wc_path, &cfg, "working copy", true, false)?;
+    let tgt = validate_local_path(&target, &cfg, "arquivo", true, false)?;
+    if patch.trim().is_empty() {
+        return Err("trecho vazio para reverter.".into());
+    }
+
+    let tmp = std::env::temp_dir().join(format!(
+        "subversa-hunk-{}-{}.patch",
+        std::process::id(),
+        next_op_id()
+    ));
+    std::fs::write(&tmp, patch.as_bytes())
+        .map_err(|e| format!("não consegui preparar o trecho: {e}"))?;
+    let tmp_s = tmp.to_string_lossy().to_string();
+    let wc_s = wc.to_string_lossy().to_string();
+
+    let out = run(
+        &["patch", "--reverse-diff", "--", &tmp_s, &wc_s],
+        None,
+        mode,
+    )
+    .await;
+    let _ = std::fs::remove_file(&tmp);
+
+    let mut out = out?;
+    // `C` é letra de status do `svn patch` (independente de idioma); "rejected
+    // hunk" reforça a detecção. Em ambos os casos houve rejeição.
+    let rejected = out.stdout.lines().any(|l| {
+        let t = l.trim_start();
+        t.starts_with("C ") || t.starts_with("C\t") || t.contains("rejected hunk")
+    });
+    if rejected {
+        let rej = PathBuf::from(format!("{}.svnpatch.rej", tgt.to_string_lossy()));
+        let _ = std::fs::remove_file(&rej);
+        out.success = false;
+        if out.hint.is_none() {
+            out.hint = Some(
+                "O trecho não casou com o arquivo atual — ele pode ter mudado desde que o diff foi gerado. Atualize as alterações e tente de novo."
+                    .into(),
+            );
+        }
+    }
+    Ok(out)
+}
+
 #[tauri::command]
 pub async fn remove(
     paths: Vec<String>,
