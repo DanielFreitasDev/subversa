@@ -64,6 +64,29 @@ test.describe("tema escuro", () => {
     await expect(page.getByText("Adicionado ao SVN")).toBeVisible();
   });
 
+  test("alterações: reverter tem botão e menu de contexto (botão direito)", async ({ page }) => {
+    await gotoApp(page);
+    await openFirstWc(page);
+
+    // Botão "Reverter tudo" no rodapé, ao lado de "Reverter selecionados".
+    await expect(page.getByRole("button", { name: "Reverter tudo" })).toBeVisible();
+
+    // Botão direito num arquivo versionado: revert do arquivo + revert global.
+    const fileRow = page.locator(".group").filter({ hasText: "ProcessoService.java" }).first();
+    await fileRow.click({ button: "right" });
+    await expect(page.getByRole("menuitem", { name: "Reverter este arquivo" })).toBeVisible();
+    await expect(page.getByRole("menuitem", { name: "Abrir no sistema" })).toBeVisible();
+    await expect(page.getByRole("menuitem", { name: "Reverter tudo" })).toBeVisible();
+    await page.keyboard.press("Escape");
+
+    // Botão direito num arquivo fora do SVN: adicionar/excluir, sem "reverter arquivo".
+    const newRow = page.locator(".group").filter({ hasText: "local.properties" }).first();
+    await newRow.click({ button: "right" });
+    await expect(page.getByRole("menuitem", { name: "Adicionar ao SVN" })).toBeVisible();
+    await expect(page.getByRole("menuitem", { name: "Excluir do disco" })).toBeVisible();
+    await expect(page.getByRole("menuitem", { name: "Reverter este arquivo" })).toHaveCount(0);
+  });
+
   test("editor de conflitos em 3 painéis", async ({ page }) => {
     await gotoApp(page);
     await openFirstWc(page);

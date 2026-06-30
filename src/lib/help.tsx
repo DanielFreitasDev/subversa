@@ -123,7 +123,7 @@ export const HELP = {
       "Marque os arquivos que quer enviar, escreva uma mensagem explicando a mudança e clique em Commitar.",
       "No SVN, commitar já envia para o servidor na hora — não existe um “push” separado.",
       "Clique em um arquivo para ver, ao lado, exatamente o que mudou (o diff).",
-      "“Reverter” descarta as mudanças locais de um arquivo, voltando ao que estava antes.",
+      "“Reverter” descarta as mudanças locais, voltando ao que estava antes: use o ícone (ou o botão direito do mouse) no arquivo, “Reverter selecionados” para os marcados, ou “Reverter tudo” para toda a working copy.",
     ],
     note: "Letras: M = modificado, A = novo, D = apagado, C = conflito. Conflitos precisam ser resolvidos antes de commitar.",
   },

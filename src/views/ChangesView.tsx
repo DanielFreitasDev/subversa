@@ -22,10 +22,12 @@ import { MergeEditor } from "@/components/merge/MergeEditor";
 import { StatusLetter } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Checkbox } from "@/components/ui/Checkbox";
+import { ContextMenu, useContextMenu, type MenuItem } from "@/components/ui/ContextMenu";
 import { Loading } from "@/components/ui/Spinner";
 import { Textarea } from "@/components/ui/Field";
 import { Tooltip } from "@/components/ui/Tooltip";
 import { HelpPopover } from "@/components/ui/HelpPopover";
+import { useActions } from "@/hooks/useActions";
 import { useSelectedWc } from "@/hooks/useSelectedWc";
 import { useStatus } from "@/hooks/useStatus";
 import { HELP } from "@/lib/help";
@@ -58,6 +60,7 @@ function StatusRow({
   onRevert,
   onReveal,
   onResolve,
+  onContext,
 }: {
   entry: StatusEntry;
   checked: boolean;
@@ -69,6 +72,7 @@ function StatusRow({
   onRevert: () => void;
   onReveal: () => void;
   onResolve: () => void;
+  onContext: (e: React.MouseEvent) => void;
 }) {
   const isConflict = entry.item === "conflicted" || entry.treeConflicted;
   const isUnversioned = entry.item === "unversioned";
@@ -77,6 +81,7 @@ function StatusRow({
   return (
     <div
       onClick={onHighlight}
+      onContextMenu={onContext}
       className={cn(
         "group flex cursor-pointer items-center gap-2.5 rounded-md px-2 py-1.5 transition-colors",
         highlighted ? "bg-panel-3" : "hover:bg-panel-2",
@@ -176,6 +181,8 @@ function StatusRow({
 function Changes({ wc }: { wc: WorkingCopy }) {
   const { data, loading, reload } = useStatus(wc.path);
   const refreshOne = useWorkspaceStore((s) => s.refreshOne);
+  const { revertAll } = useActions();
+  const ctx = useContextMenu();
   const config = useConfigStore((s) => s.config);
   const confirmServerOps = config?.confirmServerOps ?? true;
   const tool = config?.externalDiffTool ?? "meld";
@@ -255,6 +262,9 @@ function Changes({ wc }: { wc: WorkingCopy }) {
   const selectableEntries = entries.filter(isSelectable);
   const allSelected = selectableEntries.length > 0 && selectableEntries.every((e) => checked.has(e.path));
   const hasConflicts = entries.some((e) => e.item === "conflicted" || e.treeConflicted);
+  // "Reverter" só faz sentido em itens versionados (revert não toca em arquivos
+  // novos fora do SVN).
+  const hasRevertable = entries.some((e) => e.item !== "unversioned");
   // "trunk" literal só quando a WC está mesmo no trunk (um preset pode ter uma
   // branch como linha principal do projeto).
   const mainlineLabel = wc.kind === "trunk" ? "linha principal (trunk)" : "linha principal";
@@ -285,6 +295,13 @@ function Changes({ wc }: { wc: WorkingCopy }) {
     }
   };
 
+  // Reverte TODAS as alterações da working copy (recursivo). Reaproveita a ação
+  // de alto nível (confirma e oferece ponto de restauração) e só ressincroniza
+  // a lista local quando ela conclui.
+  const revertEverything = async () => {
+    if (await revertAll(wc)) await reload(false);
+  };
+
   // Coloca um arquivo novo (não versionado) sob o SVN — passa a "Adicionado".
   const addToSvn = async (path: string) => {
     const out = await tryRun(() => api.svnAdd([path]), "Falha ao adicionar ao SVN");
@@ -309,6 +326,68 @@ function Changes({ wc }: { wc: WorkingCopy }) {
       await reload(false);
       await refreshOne(wc.path);
     }
+  };
+
+  // Itens do menu de contexto (botão direito) de uma linha — espelham as ações
+  // que aparecem no hover e ainda oferecem "Reverter tudo" como atalho global.
+  const itemsFor = (e: StatusEntry): MenuItem[] => {
+    const isConflict = e.item === "conflicted" || e.treeConflicted;
+    const isUnversioned = e.item === "unversioned";
+    const items: MenuItem[] = [];
+
+    if (isConflict)
+      items.push({
+        id: "resolve",
+        label: "Resolver conflito",
+        icon: <GitMerge className="size-3.5" />,
+        onSelect: () =>
+          e.item === "conflicted" && !e.treeConflicted
+            ? setMergePath(e.path)
+            : setConflictPath(e.path),
+      });
+
+    if (isUnversioned) {
+      items.push({
+        id: "add",
+        label: "Adicionar ao SVN",
+        icon: <FilePlus2 className="size-3.5" />,
+        onSelect: () => addToSvn(e.path),
+      });
+      items.push({
+        id: "delete",
+        label: "Excluir do disco",
+        icon: <Trash2 className="size-3.5" />,
+        danger: true,
+        onSelect: () => deleteUnversioned(e.path),
+      });
+    } else {
+      items.push({
+        id: "revert",
+        label: "Reverter este arquivo",
+        icon: <RotateCcw className="size-3.5" />,
+        danger: true,
+        onSelect: () => revertPaths([e.path]),
+      });
+    }
+
+    items.push({
+      id: "reveal",
+      label: "Abrir no sistema",
+      icon: <FolderOpen className="size-3.5" />,
+      onSelect: () =>
+        tryRun(() => api.revealInFileManager(e.path), "Não consegui abrir o gerenciador de arquivos"),
+    });
+
+    items.push({
+      id: "revert-all",
+      label: "Reverter tudo",
+      icon: <RotateCcw className="size-3.5" />,
+      danger: true,
+      separatorBefore: true,
+      onSelect: revertEverything,
+    });
+
+    return items;
   };
 
   const checkServer = async () => {
@@ -457,6 +536,10 @@ function Changes({ wc }: { wc: WorkingCopy }) {
                     ? setMergePath(e.path)
                     : setConflictPath(e.path)
                 }
+                onContext={(ev) => {
+                  setHighlight(e.path);
+                  ctx.open(ev, itemsFor(e));
+                }}
               />
             ))
           )}
@@ -483,13 +566,22 @@ function Changes({ wc }: { wc: WorkingCopy }) {
             }}
           />
           <div className="mt-2 flex items-center justify-between gap-2">
-            <button
-              onClick={() => revertPaths(selectedEntries.filter((e) => e.item !== "unversioned").map((e) => e.path))}
-              disabled={!selectedEntries.some((e) => e.item !== "unversioned")}
-              className="text-[12px] text-faint transition-colors hover:text-danger disabled:opacity-40"
-            >
-              Reverter selecionados
-            </button>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => revertPaths(selectedEntries.filter((e) => e.item !== "unversioned").map((e) => e.path))}
+                disabled={!selectedEntries.some((e) => e.item !== "unversioned")}
+                className="text-[12px] text-faint transition-colors hover:text-danger disabled:opacity-40"
+              >
+                Reverter selecionados
+              </button>
+              <button
+                onClick={revertEverything}
+                disabled={!hasRevertable}
+                className="text-[12px] text-faint transition-colors hover:text-danger disabled:opacity-40"
+              >
+                Reverter tudo
+              </button>
+            </div>
             <Button variant="primary" onClick={doCommit} loading={committing} disabled={!selectedEntries.length}>
               {!committing && <Upload className="size-4" />}
               Commitar {selectedEntries.length > 0 && `(${selectedEntries.length})`}
@@ -586,6 +678,8 @@ function Changes({ wc }: { wc: WorkingCopy }) {
           await refreshOne(wc.path);
         }}
       />
+
+      <ContextMenu menu={ctx.menu} onClose={ctx.close} />
     </div>
   );
 }
