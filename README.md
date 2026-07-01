@@ -50,6 +50,15 @@ mesmos projetos prontos (sna, getran, getran160, trrenavam, sutil, sutil160).
   alterados por revisão.
 - ⚔️ **Resolução de conflitos** com um clique (manter minha versão / a do servidor /
   marcar como resolvido) ou abrir no `meld`.
+- 🛟 **Rede de segurança**: ponto de restauração antes de operações destrutivas,
+  Ctrl+Z depois de reverter e **“guardar para depois”** (shelve persistente, no
+  espírito do stash do Git).
+- ⏹️ **Operações longas canceláveis** (checkout, update, switch, merge, export e
+  busca) com progresso ao vivo, arquivo a arquivo.
+- 👤 **Autoria por linha (blame)** no navegador de repositórios, nas Alterações e
+  no Histórico (por revisão).
+- 🙈 **svn:ignore com um clique**, direto da lista de alterações (arquivo ou
+  extensão).
 - ⌘ **Paleta de comandos** (`Ctrl/⌘ + K`) para qualquer ação.
 - 🎨 **Tema escuro e claro**, design premium, animações suaves, 100% offline (fontes
   embutidas).
