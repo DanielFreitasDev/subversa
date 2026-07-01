@@ -48,6 +48,9 @@ jobs:
       - name: Build frontend
         run: npm run build
 
+      - name: Testes unitários (frontend)
+        run: npm run test:unit
+
       - name: Run E2E
         run: npm run e2e
 
