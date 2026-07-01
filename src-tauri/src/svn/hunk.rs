@@ -256,8 +256,16 @@ fn build_block_patch(h: &Hunk, s: usize, e: usize, target: &str) -> BlockPatch {
     // Assinatura: posição/contagem do trecho SEM contexto (igual ao que o front
     // calcula em `hunkRef`), para detectar que o diff mudou desde a exibição.
     let block = &h.lines[s..e];
-    let first_old = block.iter().find(|l| l.old_no != 0).map(|l| l.old_no).unwrap_or(0);
-    let first_new = block.iter().find(|l| l.new_no != 0).map(|l| l.new_no).unwrap_or(0);
+    let first_old = block
+        .iter()
+        .find(|l| l.old_no != 0)
+        .map(|l| l.old_no)
+        .unwrap_or(0);
+    let first_new = block
+        .iter()
+        .find(|l| l.new_no != 0)
+        .map(|l| l.new_no)
+        .unwrap_or(0);
     let add_count = block.iter().filter(|l| l.kind == Kind::Add).count() as u32;
     let del_count = block.iter().filter(|l| l.kind == Kind::Del).count() as u32;
 
@@ -295,7 +303,9 @@ mod tests {
     fn rebuilds_latin1_context_byte_for_byte() {
         let mut diff: Vec<u8> = Vec::new();
         diff.extend_from_slice(b"Index: build.properties\n");
-        diff.extend_from_slice(b"===================================================================\n");
+        diff.extend_from_slice(
+            b"===================================================================\n",
+        );
         diff.extend_from_slice(b"--- build.properties\t(revision 16334)\n");
         diff.extend_from_slice(b"+++ build.properties\t(working copy)\n");
         diff.extend_from_slice(b"@@ -52,4 +52,4 @@\n");
@@ -361,7 +371,10 @@ mod tests {
 
         // O 2º trecho isola só `error 2`/`debug 2`, com seu contexto vizinho.
         let s = String::from_utf8_lossy(&blocks[1].patch);
-        assert!(s.contains("@@ -24,3 +24,3 @@\n"), "cabeçalho do trecho 2: {s}");
+        assert!(
+            s.contains("@@ -24,3 +24,3 @@\n"),
+            "cabeçalho do trecho 2: {s}"
+        );
         assert!(s.contains("-    error 2\n"));
         assert!(s.contains("+    debug 2\n"));
         assert!(!s.contains("error 1"), "não vaza o trecho 1");
@@ -384,7 +397,10 @@ mod tests {
         let blocks = extract_blocks(diff, "/wc/f");
         assert_eq!(blocks.len(), 1);
         let s = String::from_utf8_lossy(&blocks[0].patch);
-        assert!(s.contains("+new line\n\\ No newline at end of file\n"), "{s}");
+        assert!(
+            s.contains("+new line\n\\ No newline at end of file\n"),
+            "{s}"
+        );
         // A linha removida NÃO ganha o marcador.
         assert!(s.contains("-old line\n"));
     }

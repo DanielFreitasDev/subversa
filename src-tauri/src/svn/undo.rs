@@ -57,7 +57,8 @@ fn undo_root() -> Result<PathBuf, String> {
         .ok_or("não consegui localizar o diretório de cache.")?
         .join("subversa")
         .join("undo");
-    std::fs::create_dir_all(&dir).map_err(|e| format!("não consegui criar a pasta de desfazer: {e}"))?;
+    std::fs::create_dir_all(&dir)
+        .map_err(|e| format!("não consegui criar a pasta de desfazer: {e}"))?;
     Ok(dir)
 }
 
@@ -84,11 +85,7 @@ async fn status_of(paths: &[String], mode: super::types::SshMode) -> Vec<(String
         _ => return Vec::new(),
     };
     match parser::parse_status(&xml, Path::new("/"), |p| p.is_dir()) {
-        Ok(res) => res
-            .entries
-            .into_iter()
-            .map(|e| (e.path, e.item))
-            .collect(),
+        Ok(res) => res.entries.into_iter().map(|e| (e.path, e.item)).collect(),
         Err(_) => Vec::new(),
     }
 }
@@ -106,7 +103,11 @@ pub async fn stash_revert(
     let (mode, cfg) = config_snapshot(&state);
     validate_local_path(&wc_path, &cfg, "working copy", true, false)?;
     if paths.is_empty() {
-        return Ok(StashResult { id: 0, file_count: 0, label });
+        return Ok(StashResult {
+            id: 0,
+            file_count: 0,
+            label,
+        });
     }
 
     let status = status_of(&paths, mode).await;
@@ -120,8 +121,7 @@ pub async fn stash_revert(
 
     let id = next_op_id();
     let dir = undo_root()?.join(format!("{}-{}", std::process::id(), id));
-    std::fs::create_dir_all(&dir)
-        .map_err(|e| format!("não consegui preparar o desfazer: {e}"))?;
+    std::fs::create_dir_all(&dir).map_err(|e| format!("não consegui preparar o desfazer: {e}"))?;
 
     let mut files = Vec::new();
     for (i, p) in paths.iter().enumerate() {
@@ -146,7 +146,11 @@ pub async fn stash_revert(
 
     if files.is_empty() {
         let _ = std::fs::remove_dir_all(&dir);
-        return Ok(StashResult { id: 0, file_count: 0, label });
+        return Ok(StashResult {
+            id: 0,
+            file_count: 0,
+            label,
+        });
     }
 
     let file_count = files.len() as u32;
@@ -159,7 +163,11 @@ pub async fn stash_revert(
         }
     }
 
-    Ok(StashResult { id, file_count, label })
+    Ok(StashResult {
+        id,
+        file_count,
+        label,
+    })
 }
 
 /// Desfaz uma reversão: restaura o conteúdo capturado e reaplica o agendamento
