@@ -13,6 +13,7 @@ use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use serde::Deserialize;
 use tauri::{AppHandle, State};
 
+use super::cancel::{self, CancelToken};
 use super::commands::{
     config_snapshot, emit_op_progress, is_wc, next_op_id, validate_local_path, PROGRESS_INTERVAL,
 };
@@ -122,17 +123,22 @@ fn read_all(root: &Path) -> Vec<(BackupEntry, PathBuf)> {
 /// Copia recursivamente o conteúdo de `src` para `dst`, chamando `on_file` a cada
 /// arquivo (para o progresso) e somando tamanho/contagem em `stats`. Symlinks são
 /// recriados (não seguidos). Bloqueante — chamada dentro de `spawn_blocking`.
+/// `cancel` interrompe entre uma entrada e outra (nunca no meio de um arquivo).
 fn copy_tree(
     src: &Path,
     dst: &Path,
     on_file: &mut dyn FnMut(u64, &Path),
     stats: &mut CopyStats,
+    cancel: &CancelToken,
 ) -> Result<(), String> {
     std::fs::create_dir_all(dst)
         .map_err(|e| format!("não consegui criar {}: {e}", dst.display()))?;
     let rd =
         std::fs::read_dir(src).map_err(|e| format!("não consegui ler {}: {e}", src.display()))?;
     for entry in rd {
+        if cancel.is_cancelled() {
+            return Err(cancel::CANCELLED_MSG.into());
+        }
         let entry = entry.map_err(|e| format!("falha ao listar {}: {e}", src.display()))?;
         let ft = entry
             .file_type()
@@ -140,7 +146,7 @@ fn copy_tree(
         let from = entry.path();
         let to = dst.join(entry.file_name());
         if ft.is_dir() {
-            copy_tree(&from, &to, on_file, stats)?;
+            copy_tree(&from, &to, on_file, stats, cancel)?;
         } else if ft.is_symlink() {
             #[cfg(unix)]
             {
@@ -172,6 +178,10 @@ async fn copy_with_progress(
     dst: PathBuf,
 ) -> Result<CopyStats, String> {
     let op_id = next_op_id();
+    // Cancelável pelo mesmo `id` do op-progress; o token (clonado) viaja para a
+    // thread bloqueante e é checado a cada entrada copiada.
+    let guard = cancel::register(op_id);
+    let token = guard.token().clone();
     emit_op_progress(app, op_id, op, 0, "", false);
     let emitter = app.clone();
 
@@ -186,7 +196,7 @@ async fn copy_with_progress(
                     emit_op_progress(&emitter, op_id, op, count, &p.to_string_lossy(), false);
                 }
             };
-            copy_tree(&src, &dst, &mut on_file, &mut stats)?;
+            copy_tree(&src, &dst, &mut on_file, &mut stats, &token)?;
         }
         Ok(stats)
     })
@@ -335,7 +345,15 @@ pub async fn restore_backup(
     .map_err(|e| format!("a preparação da restauração falhou: {e}"))?;
     prep?;
 
-    let stats = copy_with_progress(&app, "restore", data, target).await?;
+    let stats = copy_with_progress(&app, "restore", data, target)
+        .await
+        .map_err(|e| {
+            if e.starts_with(cancel::CANCELLED_MSG) {
+                format!("{e}\n\nA restauração foi interrompida e a working copy ficou INCOMPLETA — restaure este backup novamente para deixá-la íntegra.")
+            } else {
+                e
+            }
+        })?;
 
     Ok(CommandOutput {
         success: true,

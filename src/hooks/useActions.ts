@@ -31,14 +31,16 @@ export function useActions() {
       });
       if (!ok) return false;
       const out = await tryRun(() => api.update(wc.path), "Falha no update");
-      if (!out) return false;
-      if (out.success) {
+      if (out?.success) {
         const rev = extractRevision(out.stdout) ?? wc.revision;
         toast.success("Working copy atualizada", `Agora em r${rev}`);
         await refreshOne(wc.path);
         return true;
       }
-      reportOutput(out, "");
+      if (out) reportOutput(out, "");
+      // Falha ou cancelamento no meio do caminho podem ter mexido na WC
+      // (update parcial): ressincroniza o resumo para a UI não mentir.
+      await refreshOne(wc.path);
       return false;
     },
     [refreshOne],
@@ -136,6 +138,8 @@ export function useActions() {
         await refreshOne(wc.path);
         return true;
       }
+      // Um switch cancelado/falho pode já ter alterado parte da WC.
+      await refreshOne(wc.path);
       return false;
     },
     [refreshOne, confirmServerOps],

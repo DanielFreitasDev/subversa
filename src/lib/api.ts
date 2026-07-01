@@ -69,6 +69,9 @@ export const listTree = (url: string) => invoke<ListEntry[]>("list_tree", { url 
 export const searchContent = (baseUrl: string, query: string) =>
   invoke<ContentSearchResult>("search_content", { baseUrl, query });
 
+/** Cancela uma operação longa em andamento (`id` vindo do evento `op-progress`). */
+export const cancelOp = (id: number) => invoke<boolean>("cancel_op", { id });
+
 export const catFile = (target: string, revision?: string) =>
   invoke<string>("cat_file", { target, revision: revision ?? null });
 

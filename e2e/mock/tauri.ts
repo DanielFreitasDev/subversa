@@ -358,6 +358,8 @@ export function tauriInit(fx: MockData) {
       }
       case "search_content":
         return fx.contentSearch;
+      case "cancel_op":
+        return true;
       case "cat_file":
         return "package br.tjsc.sna.processo;\n\npublic class ProcessoService {\n  // ...\n}\n";
       case "conflict_details":

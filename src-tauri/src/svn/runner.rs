@@ -9,6 +9,7 @@ use tokio::process::Command;
 use tokio::time::timeout;
 
 use super::audit;
+use super::cancel;
 use super::conn;
 use super::parser::hint_from_stderr;
 use super::types::{CommandOutput, SshMode};
@@ -274,12 +275,15 @@ fn build_output(
 /// Igual a [`run_limited`], mas transmite o stdout linha a linha: chama
 /// `on_line` para cada linha conforme o `svn` a imprime (ex.: cada arquivo que
 /// o checkout adiciona). O stdout completo ainda é acumulado e devolvido no
-/// [`CommandOutput`] final, então o chamador não perde nada.
+/// [`CommandOutput`] final, então o chamador não perde nada. `cancel` permite
+/// interromper no meio: o processo é morto e a operação devolve `Err` com
+/// [`cancel::CANCELLED_MSG`].
 pub async fn run_with_progress<F>(
     args: &[&str],
     cwd: Option<&Path>,
     mode: SshMode,
     limit: OutputLimit,
+    cancel: &cancel::CancelToken,
     mut on_line: F,
 ) -> Result<CommandOutput, String>
 where
@@ -287,7 +291,7 @@ where
 {
     // Mesmo funil de telemetria do `run_limited`.
     let started = Instant::now();
-    let result = run_with_progress_inner(args, cwd, mode, limit, &mut on_line).await;
+    let result = run_with_progress_inner(args, cwd, mode, limit, cancel, &mut on_line).await;
     let (success, code) = match &result {
         Ok(out) => (out.success, out.code),
         Err(_) => (false, None),
@@ -301,6 +305,7 @@ async fn run_with_progress_inner<F>(
     cwd: Option<&Path>,
     mode: SshMode,
     limit: OutputLimit,
+    cancel: &cancel::CancelToken,
     on_line: &mut F,
 ) -> Result<CommandOutput, String>
 where
@@ -359,20 +364,31 @@ where
         Ok::<(Vec<u8>, Vec<u8>), String>((full, stderr))
     };
 
-    let (stdout, stderr) = match timeout(SVN_TIMEOUT, read_streams).await {
-        Ok(Ok(streams)) => streams,
-        Ok(Err(e)) => {
+    // Além do timeout, esta variante corre contra o token de cancelamento: ao
+    // cancelar, mata só o `svn` (o ssh do túnel morre junto por EOF/EPIPE; o
+    // ControlMaster compartilhado sobrevive de propósito) e devolve o sentinela
+    // que o frontend reconhece.
+    let (stdout, stderr) = tokio::select! {
+        res = timeout(SVN_TIMEOUT, read_streams) => match res {
+            Ok(Ok(streams)) => streams,
+            Ok(Err(e)) => {
+                let _ = child.kill().await;
+                let _ = child.wait().await;
+                return Err(e);
+            }
+            Err(_) => {
+                let _ = child.kill().await;
+                let _ = child.wait().await;
+                return Err(
+                    "a operação do svn excedeu o tempo limite (30 min). Verifique a rede/VPN e o acesso SSH ao servidor."
+                        .into(),
+                );
+            }
+        },
+        _ = cancel.cancelled() => {
             let _ = child.kill().await;
             let _ = child.wait().await;
-            return Err(e);
-        }
-        Err(_) => {
-            let _ = child.kill().await;
-            let _ = child.wait().await;
-            return Err(
-                "a operação do svn excedeu o tempo limite (30 min). Verifique a rede/VPN e o acesso SSH ao servidor."
-                    .into(),
-            );
+            return Err(cancel::CANCELLED_MSG.into());
         }
     };
 

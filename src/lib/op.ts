@@ -33,6 +33,11 @@ export function extractRevision(stdout: string): string | null {
   return m ? m[1] : null;
 }
 
+/** Reconhece o sentinela de cancelamento do backend (ver `cancel.rs`). */
+export function isCancelled(e: unknown): boolean {
+  return String(e).startsWith("operação cancelada");
+}
+
 /** Envolve uma chamada que pode lançar (Err string), reportando erro. */
 export async function tryRun<T>(
   fn: () => Promise<T>,
@@ -41,6 +46,13 @@ export async function tryRun<T>(
   try {
     return await fn();
   } catch (e) {
+    if (isCancelled(e)) {
+      // Cancelar não é erro: toast informativo, com a orientação da operação
+      // (o backend anexa a dica após uma linha em branco).
+      const [, hint] = String(e).split("\n\n");
+      toast.info("Operação cancelada", hint);
+      return null;
+    }
     toast.error(errorTitle, friendlyErrorMessage(e));
     return null;
   }

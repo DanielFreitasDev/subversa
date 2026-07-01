@@ -9,6 +9,7 @@
 import { useMemo } from "react";
 import { File as FileIcon, Folder, Loader2, ServerCrash } from "lucide-react";
 
+import { Button } from "@/components/ui/Button";
 import { Empty } from "@/components/ui/Empty";
 import { Loading } from "@/components/ui/Spinner";
 import { baseName, decodeUrlSafe, dirName } from "@/lib/utils";
@@ -131,9 +132,14 @@ function ContentResults({ search }: { search: UseRepoSearch }) {
 
   if (contentLoading) {
     return (
-      <Loading
-        label={`Verificando… ${contentScanned.toLocaleString("pt-BR")} arquivo(s)`}
-      />
+      <div className="flex flex-col items-center gap-2 py-2">
+        <Loading
+          label={`Verificando… ${contentScanned.toLocaleString("pt-BR")} arquivo(s)`}
+        />
+        <Button variant="outline" size="sm" onClick={search.cancelContent}>
+          Cancelar busca
+        </Button>
+      </div>
     );
   }
   if (contentError) {

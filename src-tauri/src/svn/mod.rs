@@ -2,6 +2,7 @@
 
 pub mod audit;
 pub mod backup;
+pub mod cancel;
 pub mod commands;
 pub mod conn;
 pub mod hunk;

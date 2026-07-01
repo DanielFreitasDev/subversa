@@ -20,6 +20,7 @@ import {
   RotateCcw,
 } from "lucide-react";
 
+import { cancelOp } from "@/lib/api";
 import type { OpProgress, TransferOp } from "@/lib/types";
 import { TransferProgress } from "./TransferProgress";
 
@@ -109,6 +110,7 @@ export function ActivityPanel() {
                 count={o.count}
                 path={o.path}
                 icon={<span className="shrink-0 text-brand">{meta.icon}</span>}
+                onCancel={o.done ? undefined : () => void cancelOp(o.id)}
               />
             </motion.div>
           );

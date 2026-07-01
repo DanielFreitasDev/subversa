@@ -18,6 +18,7 @@ import { listen } from "@tauri-apps/api/event";
 
 import * as api from "@/lib/api";
 import { friendlyErrorMessage } from "@/lib/errors";
+import { isCancelled } from "@/lib/op";
 import type { ListEntry, OpProgress, SearchMatch } from "@/lib/types";
 import { decodeUrlSafe, dirName } from "@/lib/utils";
 import { nodeKind, useRepoBrowserStore, type RepoNode } from "@/store/repoBrowser";
@@ -45,6 +46,8 @@ export interface UseRepoSearch {
   setQuery: (q: string) => void;
   /** Dispara a busca por conteúdo (Enter/botão). No-op fora do modo conteúdo. */
   submit: () => void;
+  /** Cancela a busca por conteúdo em andamento (volta ao estado ocioso). */
+  cancelContent: () => void;
   clear: () => void;
   // --- nome ---
   nameResults: NameResult[];
@@ -133,6 +136,8 @@ export function useRepoSearch(): UseRepoSearch {
   const [contentTruncated, setContentTruncated] = useState(false);
   const [contentError, setContentError] = useState<string | null>(null);
   const unlistenRef = useRef<(() => void) | null>(null);
+  // `id` da varredura em andamento (vem no primeiro `op-progress`), para cancelar.
+  const searchOpIdRef = useRef(-1);
 
   const resetContent = useCallback(() => {
     setContentScope(null);
@@ -158,23 +163,36 @@ export function useRepoSearch(): UseRepoSearch {
     setContentMatchedFiles(0);
     setContentScanned(0);
     setContentLoading(true);
+    searchOpIdRef.current = -1;
     try {
       // Escuta o progresso ANTES do invoke (o backend emite durante a varredura).
       unlistenRef.current = await listen<OpProgress>("op-progress", (e) => {
-        if (e.payload.op === "search") setContentScanned(e.payload.count);
+        if (e.payload.op === "search") {
+          searchOpIdRef.current = e.payload.id;
+          setContentScanned(e.payload.count);
+        }
       });
       const res = await api.searchContent(scope, q);
       setContentResults(res.matches);
       setContentMatchedFiles(res.filesMatched);
       setContentTruncated(res.truncated);
     } catch (err) {
+      if (isCancelled(err)) {
+        // Cancelada pelo usuário: volta ao estado ocioso, sem tela de erro.
+        resetContent();
+        return;
+      }
       setContentError(friendlyErrorMessage(err));
     } finally {
       setContentLoading(false);
       unlistenRef.current?.();
       unlistenRef.current = null;
     }
-  }, [mode, query, scope]);
+  }, [mode, query, scope, resetContent]);
+
+  const cancelContent = useCallback(() => {
+    if (searchOpIdRef.current >= 0) void api.cancelOp(searchOpIdRef.current);
+  }, []);
 
   // Garante a remoção do listener ao desmontar.
   useEffect(() => () => unlistenRef.current?.(), []);
@@ -208,6 +226,7 @@ export function useRepoSearch(): UseRepoSearch {
     setMode,
     setQuery,
     submit,
+    cancelContent,
     clear,
     nameResults,
     nameLoading,

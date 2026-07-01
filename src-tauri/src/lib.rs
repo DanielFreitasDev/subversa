@@ -107,6 +107,8 @@ pub fn run() {
             svn::commands::detect_encoding_url,
             svn::commands::open_in_editor,
             svn::commands::suggested_base_dir,
+            // cancelamento de operações longas
+            svn::cancel::cancel_op,
             // registro / auditoria
             svn::commands::get_command_log,
             svn::commands::clear_command_log,

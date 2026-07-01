@@ -7,6 +7,7 @@
  */
 
 import type { ReactNode } from "react";
+import { X } from "lucide-react";
 
 /**
  * Caminho relativo a uma raiz, para exibição. O `svn` imprime a raiz inteira à
@@ -35,10 +36,12 @@ interface TransferProgressProps {
   base?: string;
   /** Ícone opcional à esquerda do rótulo (usado nos cartões do painel). */
   icon?: ReactNode;
+  /** Quando presente, mostra um botão para cancelar a operação. */
+  onCancel?: () => void;
   className?: string;
 }
 
-export function TransferProgress({ label, count, path, base, icon, className }: TransferProgressProps) {
+export function TransferProgress({ label, count, path, base, icon, onCancel, className }: TransferProgressProps) {
   const shown = !path ? "" : base ? relativeToBase(path, base) : tail(path);
   return (
     <div className={className}>
@@ -49,6 +52,16 @@ export function TransferProgress({ label, count, path, base, icon, className }: 
             ? `${label}… ${count.toLocaleString("pt-BR")} ${count === 1 ? "arquivo" : "arquivos"}`
             : `${label}…`}
         </span>
+        {onCancel && (
+          <button
+            onClick={onCancel}
+            title="Cancelar operação"
+            aria-label="Cancelar operação"
+            className="ml-auto flex size-5 shrink-0 items-center justify-center rounded text-faint transition-colors hover:bg-panel-3 hover:text-conflict"
+          >
+            <X className="size-3.5" />
+          </button>
+        )}
       </div>
       <div className="relative h-1.5 w-full overflow-hidden rounded-full bg-panel-3">
         <div className="absolute inset-y-0 left-0 w-2/5 rounded-full bg-brand animate-[indeterminate_1.15s_ease-in-out_infinite]" />

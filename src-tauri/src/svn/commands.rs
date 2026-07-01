@@ -12,6 +12,7 @@ use serde::Deserialize;
 use tauri::{AppHandle, Emitter, State};
 use url::Url;
 
+use super::cancel;
 use super::parser;
 use super::runner::{
     run, run_checked, run_checked_limited, run_limited, run_raw_checked_limited, run_with_progress,
@@ -681,6 +682,7 @@ pub async fn search_content(
     let entries = parser::parse_list(&xml)?;
 
     let id = next_op_id();
+    let guard = cancel::register(id);
     emit_op_progress(&app, id, "search", 0, "", false);
 
     let mut matches: Vec<SearchMatch> = Vec::new();
@@ -690,6 +692,12 @@ pub async fn search_content(
     let mut last_emit = Instant::now();
 
     for e in entries {
+        // Cancelamento entre arquivos: cada `svn cat` é pequeno (≤ 5 MiB), então
+        // checar aqui responde rápido sem precisar de token dentro do cat.
+        if guard.is_cancelled() {
+            emit_op_progress(&app, id, "search", files_scanned, "", true);
+            return Err(cancel::CANCELLED_MSG.into());
+        }
         if e.kind != "file" || e.name.is_empty() || has_binary_ext(&e.name) {
             continue;
         }
@@ -936,6 +944,9 @@ async fn run_streaming_op(
     mode: SshMode,
 ) -> Result<CommandOutput, String> {
     let id = next_op_id();
+    // Cancelável sob o mesmo `id` do op-progress — é ele que a UI conhece e
+    // devolve em `cancel_op`. O guard sai do registro no drop.
+    let guard = cancel::register(id);
     // Evento inicial: a UI mostra "<operação>…" antes mesmo do primeiro arquivo.
     emit_op_progress(app, id, op, 0, "", false);
 
@@ -955,12 +966,40 @@ async fn run_streaming_op(
         }
     };
 
-    let out = run_with_progress(args, cwd, mode, LIMIT_DEFAULT, on_line).await;
+    let out = run_with_progress(args, cwd, mode, LIMIT_DEFAULT, guard.token(), on_line).await;
 
     // Evento final com o total exato (o throttle pode ter omitido a última
     // rajada). Emitido também em erro, para a UI remover o cartão.
     emit_op_progress(app, id, op, count, "", true);
-    out
+
+    // Cancelada: anexa a orientação específica da operação (o que ficou para
+    // trás e como seguir) à mensagem-sentinela.
+    match out {
+        Err(e) if e.starts_with(cancel::CANCELLED_MSG) => match cancel_hint(op) {
+            Some(h) => Err(format!("{e}\n\n{h}")),
+            None => Err(e),
+        },
+        other => other,
+    }
+}
+
+/// Orientação pós-cancelamento, por operação.
+fn cancel_hint(op: &str) -> Option<&'static str> {
+    match op {
+        "checkout" => Some(
+            "O download parcial foi mantido na pasta de destino — repita o checkout para continuar de onde parou, ou exclua a pasta.",
+        ),
+        "update" | "switch" => Some(
+            "A working copy pode ter ficado travada ou pela metade. Use Limpar (cleanup) e atualize novamente.",
+        ),
+        "merge" => Some(
+            "A mesclagem pode ter aplicado só parte das alterações. Revise na aba Alterações e considere Reverter tudo; se a working copy travar, use Limpar (cleanup).",
+        ),
+        "export" => {
+            Some("A exportação parcial ficou na pasta de destino; exclua-a se não precisar dela.")
+        }
+        _ => None,
+    }
 }
 
 #[tauri::command]

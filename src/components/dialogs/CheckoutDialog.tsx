@@ -230,6 +230,9 @@ export function CheckoutDialog() {
           count={progress.count}
           path={progress.path}
           base={dest}
+          // O placeholder local usa id -1; o primeiro evento do backend traz o
+          // id real e habilita o cancelamento.
+          onCancel={progress.id >= 0 ? () => void api.cancelOp(progress.id) : undefined}
           className="mt-4 rounded-lg border border-line bg-panel-2 px-3 py-3"
         />
       ) : (
