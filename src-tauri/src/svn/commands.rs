@@ -14,8 +14,8 @@ use url::Url;
 
 use super::parser;
 use super::runner::{
-    run, run_checked, run_checked_limited, run_limited, run_raw_checked_limited,
-    run_with_progress, LIMIT_BLAME, LIMIT_CAT_FILE, LIMIT_DEFAULT,
+    run, run_checked, run_checked_limited, run_limited, run_raw_checked_limited, run_with_progress,
+    LIMIT_BLAME, LIMIT_CAT_FILE, LIMIT_DEFAULT,
 };
 use super::types::*;
 use crate::config;
@@ -1040,7 +1040,7 @@ pub async fn svn_add(
         return Err("nenhum arquivo para adicionar".into());
     }
     let mode = mode_of(&state);
-    let mut args: Vec<String> = vec!["add".into(), "--parents".into()];
+    let mut args: Vec<String> = vec!["add".into(), "--parents".into(), "--non-interactive".into()];
     args.push("--".into());
     args.extend(paths);
     let refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
@@ -1057,7 +1057,7 @@ pub async fn revert(
         return Err("nenhum arquivo para reverter".into());
     }
     let mode = mode_of(&state);
-    let mut args: Vec<String> = vec!["revert".into()];
+    let mut args: Vec<String> = vec!["revert".into(), "--non-interactive".into()];
     if recursive {
         args.push("-R".into());
     }
@@ -1739,11 +1739,12 @@ pub fn load_config(state: State<'_, AppState>) -> Result<AppConfig, String> {
 
 #[tauri::command]
 pub fn save_config(config: AppConfig, state: State<'_, AppState>) -> Result<(), String> {
-    config::save(&config)?;
+    // Memória primeiro, disco depois: quem consultar a config entre os dois
+    // passos já vê o valor novo (se a gravação falhar, o próximo save realinha).
     if let Ok(mut g) = state.config.lock() {
-        *g = config;
+        *g = config.clone();
     }
-    Ok(())
+    config::save(&config)
 }
 
 /// Config-modelo semeada a partir de um host SSH (ex.: `usuario@servidor`):
@@ -1978,7 +1979,11 @@ fn encode_text(content: &str, encoding: &str) -> Result<Vec<u8>, String> {
         }
     }
     if !bad.is_empty() {
-        let list = bad.iter().map(|c| format!("“{c}”")).collect::<Vec<_>>().join(", ");
+        let list = bad
+            .iter()
+            .map(|c| format!("“{c}”"))
+            .collect::<Vec<_>>()
+            .join(", ");
         return Err(format!(
             "estes caracteres não existem em ISO-8859-1 (latino-1): {list}. Remova-os para salvar, \
              ou use o editor externo para converter o arquivo em UTF-8."
@@ -2025,7 +2030,11 @@ mod encoding_tests {
         diff.push(b'\n');
 
         let out = decode_diff(&diff);
-        assert_eq!(out.matches("+ção").count(), 2, "ambos os arquivos certos: {out:?}");
+        assert_eq!(
+            out.matches("+ção").count(),
+            2,
+            "ambos os arquivos certos: {out:?}"
+        );
         assert!(!out.contains('\u{FFFD}'), "sem mojibake (U+FFFD): {out:?}");
     }
 
@@ -2033,7 +2042,10 @@ mod encoding_tests {
     fn latino1_recusa_caractere_fora_da_tabela() {
         // Usuário editou um arquivo latino-1 e digitou "€" (U+20AC), que não existe nele.
         let err = encode_text("preço: 10€", "iso-8859-1").unwrap_err();
-        assert!(err.contains('€'), "a mensagem deve citar o caractere: {err}");
+        assert!(
+            err.contains('€'),
+            "a mensagem deve citar o caractere: {err}"
+        );
     }
 }
 
