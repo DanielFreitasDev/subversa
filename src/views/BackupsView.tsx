@@ -15,6 +15,7 @@ import {
   HardDrive,
   RefreshCw,
   RotateCcw,
+  ShieldAlert,
   Trash2,
   TreePine,
 } from "lucide-react";
@@ -28,6 +29,7 @@ import { reportOutput, tryRun } from "@/lib/op";
 import type { BackupEntry, OpProgress } from "@/lib/types";
 import { cn, formatAbsolute, formatBytes, formatRelative } from "@/lib/utils";
 import { confirm } from "@/store/confirm";
+import { useConfigStore } from "@/store/config";
 import { toast } from "@/store/toast";
 import { useWorkspaceStore } from "@/store/workspace";
 import { ViewHeader } from "@/views/_shared";
@@ -103,6 +105,7 @@ export function BackupsView() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const refreshOne = useWorkspaceStore((s) => s.refreshOne);
+  const backupKeep = useConfigStore((s) => s.config?.backupKeep ?? 5);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -208,6 +211,16 @@ export function BackupsView() {
           </div>
         ) : (
           <div className="mx-auto max-w-3xl space-y-3">
+            {backupKeep === 0 && (
+              <div className="flex items-start gap-2 rounded-lg border border-warn/30 bg-warn/10 px-3 py-2 text-[11px] leading-snug text-warn">
+                <ShieldAlert className="mt-0.5 size-3.5 shrink-0" />
+                <span>
+                  A poda automática está <b>desativada</b> (manter todos): os backups já somam{" "}
+                  <b>{formatBytes(totalBytes)}</b> e só crescem. Defina um limite em Configurações
+                  para o app apagar os mais antigos sozinho.
+                </span>
+              </div>
+            )}
             {backups.map((b) => (
               <BackupCard key={b.id} b={b} onRestore={onRestore} onDelete={onDelete} busy={busy} />
             ))}
