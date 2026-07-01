@@ -381,6 +381,16 @@ export function tauriInit(fx: MockData) {
       case "open_in_editor":
       case "write_text_file":
         return null;
+      case "detect_encoding": {
+        const p = String((args?.path as string) ?? "");
+        if (p.includes("://")) return "unknown"; // conteúdo remoto (diff de histórico)
+        if (p.endsWith(".properties")) return "iso-8859-1";
+        return "utf-8";
+      }
+      case "detect_encoding_url": {
+        const u = String((args?.url as string) ?? "");
+        return u.endsWith(".properties") ? "iso-8859-1" : "utf-8";
+      }
       case "read_text_file":
         return {
           content:

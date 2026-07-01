@@ -427,7 +427,10 @@ pub async fn get_diff(
         _ => args.push(path),
     }
     let refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-    run_checked(&refs, None, mode).await
+    // Bytes crus + decodificação por arquivo: preserva o conteúdo latino-1 no diff
+    // em vez do mojibake do `from_utf8_lossy`.
+    let bytes = run_raw_checked_limited(&refs, None, mode, LIMIT_DEFAULT).await?;
+    Ok(decode_diff(&bytes))
 }
 
 /// Diff de uma revisão inteira (`target` = caminho da WC ou URL) ou de um único
@@ -458,7 +461,8 @@ pub async fn diff_revision(
         "--",
         target.as_str(),
     ];
-    run_checked_limited(&args, None, mode, LIMIT_DEFAULT).await
+    let bytes = run_raw_checked_limited(&args, None, mode, LIMIT_DEFAULT).await?;
+    Ok(decode_diff(&bytes))
 }
 
 /// Histórico (`svn log -v`). `target` pode ser um caminho de WC ou uma URL.
@@ -775,7 +779,9 @@ pub async fn cat_file(
     args.push("--".into());
     args.push(target);
     let refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-    run_checked_limited(&refs, None, mode, LIMIT_CAT_FILE).await
+    // Bytes crus + decode: o conteúdo (revelar contexto, prévia) preserva latino-1.
+    let bytes = run_raw_checked_limited(&refs, None, mode, LIMIT_CAT_FILE).await?;
+    Ok(decode_text(&bytes).0)
 }
 
 /// Autoria por linha (`svn blame`) combinada com o conteúdo (`svn cat`).
@@ -857,7 +863,8 @@ pub async fn diff_urls(
         "--new",
         new_url.as_str(),
     ];
-    run_checked_limited(&args, None, mode, LIMIT_DEFAULT).await
+    let bytes = run_raw_checked_limited(&args, None, mode, LIMIT_DEFAULT).await?;
+    Ok(decode_diff(&bytes))
 }
 
 // ---------------------------------------------------------------------------
@@ -1917,15 +1924,38 @@ pub fn open_external_diff(
 /// mapeia direto para `U+0000–U+00FF`, então a decodificação nunca falha e o
 /// roundtrip byte-a-byte é exato. Muitos arquivos desta equipe são latino-1.
 /// Devolve o texto e o rótulo da codificação (para restaurar na gravação).
-fn decode_text(bytes: Vec<u8>) -> (String, &'static str) {
-    match String::from_utf8(bytes) {
-        Ok(s) => (s, "utf-8"),
-        // `into_bytes` recupera o vetor sem cópia; latino-1 é 1 byte = 1 code point.
-        Err(e) => (
-            e.into_bytes().iter().map(|&b| b as char).collect::<String>(),
-            "iso-8859-1",
-        ),
+fn decode_text(bytes: &[u8]) -> (String, &'static str) {
+    match std::str::from_utf8(bytes) {
+        Ok(s) => (s.to_string(), "utf-8"),
+        // Latino-1: 1 byte = 1 code point (U+0000–U+00FF). Nunca falha, roundtrip exato.
+        Err(_) => (bytes.iter().map(|&b| b as char).collect(), "iso-8859-1"),
     }
+}
+
+/// Decodifica a saída de `svn diff` (bytes crus) respeitando a codificação de CADA
+/// arquivo. O diff mistura cabeçalhos do svn (linhas `Index:`/`@@`, sempre ASCII no
+/// que a UI usa) com o conteúdo dos arquivos — que nesta equipe costuma ser
+/// ISO-8859-1. Fatiar por arquivo (nas linhas `Index: `) e decodificar cada bloco
+/// isolado acerta até changesets com codificações mistas (um arquivo UTF-8 e outro
+/// latino-1 no mesmo diff), em vez de um `from_utf8_lossy` global que trocaria todo
+/// byte acentuado por U+FFFD (o mojibake que aparecia no diff).
+fn decode_diff(bytes: &[u8]) -> String {
+    const MARK: &[u8] = b"\nIndex: ";
+    let mut out = String::new();
+    let mut start = 0usize;
+    let mut i = 0usize;
+    while i + MARK.len() <= bytes.len() {
+        if &bytes[i..i + MARK.len()] == MARK {
+            // Fecha o bloco anterior (até o '\n' inclusive); o próximo começa em "Index:".
+            out.push_str(&decode_text(&bytes[start..=i]).0);
+            start = i + 1;
+            i += MARK.len();
+        } else {
+            i += 1;
+        }
+    }
+    out.push_str(&decode_text(&bytes[start..]).0);
+    out
 }
 
 /// Re-codifica o texto editado de volta na codificação original. Para ISO-8859-1
@@ -1959,12 +1989,12 @@ fn encode_text(content: &str, encoding: &str) -> Result<Vec<u8>, String> {
 
 #[cfg(test)]
 mod encoding_tests {
-    use super::{decode_text, encode_text};
+    use super::{decode_diff, decode_text, encode_text};
 
     #[test]
     fn utf8_faz_roundtrip_exato() {
         let bytes = "Configurações de autenticação".as_bytes().to_vec();
-        let (text, enc) = decode_text(bytes.clone());
+        let (text, enc) = decode_text(&bytes);
         assert_eq!(enc, "utf-8");
         assert_eq!(text, "Configurações de autenticação");
         assert_eq!(encode_text(&text, enc).unwrap(), bytes);
@@ -1976,11 +2006,27 @@ mod encoding_tests {
         let bytes = vec![
             b'C', b'o', b'n', b'f', b'i', b'g', b'u', b'r', b'a', 0xE7, 0xE3, b'o',
         ];
-        let (text, enc) = decode_text(bytes.clone());
+        let (text, enc) = decode_text(&bytes);
         assert_eq!(enc, "iso-8859-1");
         assert_eq!(text, "Configuração");
         // O que importa: regravar devolve os MESMOS bytes (não "promove" para UTF-8).
         assert_eq!(encode_text(&text, enc).unwrap(), bytes);
+    }
+
+    #[test]
+    fn decode_diff_respeita_encoding_por_arquivo() {
+        // Diff com DOIS arquivos: o 1º UTF-8, o 2º latino-1. Um decode global estragaria
+        // um dos dois; o fatiamento por "Index:" decodifica cada bloco certo.
+        let mut diff = Vec::new();
+        diff.extend_from_slice(b"Index: a.txt\n===\n--- a.txt\n+++ a.txt\n@@ -1 +1 @@\n+");
+        diff.extend_from_slice("ção".as_bytes()); // UTF-8
+        diff.extend_from_slice(b"\nIndex: b.txt\n===\n--- b.txt\n+++ b.txt\n@@ -1 +1 @@\n+");
+        diff.extend_from_slice(&[0xE7, 0xE3, 0x6F]); // latino-1: "ção"
+        diff.push(b'\n');
+
+        let out = decode_diff(&diff);
+        assert_eq!(out.matches("+ção").count(), 2, "ambos os arquivos certos: {out:?}");
+        assert!(!out.contains('\u{FFFD}'), "sem mojibake (U+FFFD): {out:?}");
     }
 
     #[test]
@@ -2019,7 +2065,7 @@ pub async fn read_text_file(path: String, state: State<'_, AppState>) -> Result<
             "arquivo binário — não dá para editar como texto. Use o editor externo.".into(),
         );
     }
-    let (content, encoding) = decode_text(bytes);
+    let (content, encoding) = decode_text(&bytes);
     Ok(TextFile {
         content,
         encoding: encoding.into(),
@@ -2045,6 +2091,69 @@ pub async fn write_text_file(
     }
     let bytes = encode_text(&content, &encoding)?;
     write_atomic(&abs, &bytes)
+}
+
+/// Detecta a codificação de um arquivo LOCAL só para exibição (badge na UI), sem
+/// carregar o conteúdo para edição. Retorna `"utf-8"`, `"iso-8859-1"`, `"binary"`
+/// (tem NUL) ou `"unknown"` (pasta, ilegível, grande demais ou caminho não-local —
+/// ex.: o diff do histórico usa URLs do servidor). Nunca falha: a UI simplesmente
+/// esconde o badge quando não é `utf-8`/`iso-8859-1`.
+#[tauri::command]
+pub async fn detect_encoding(path: String, state: State<'_, AppState>) -> Result<String, String> {
+    let (_, cfg) = config_snapshot(&state);
+    let Ok(abs) = validate_local_path(&path, &cfg, "arquivo", false, false) else {
+        return Ok("unknown".into());
+    };
+    let Ok(meta) = std::fs::metadata(&abs) else {
+        return Ok("unknown".into());
+    };
+    const MAX_BYTES: u64 = 5 * 1024 * 1024;
+    if !meta.is_file() || meta.len() > MAX_BYTES {
+        return Ok("unknown".into());
+    }
+    let Ok(bytes) = std::fs::read(&abs) else {
+        return Ok("unknown".into());
+    };
+    // Mesma heurística de binário do editor: NUL nos primeiros KB ⇒ binário.
+    if bytes.iter().take(8000).any(|&b| b == 0) {
+        return Ok("binary".into());
+    }
+    // Reusa a mesma detecção UTF-8-vs-latino-1 do editor (fonte única da verdade).
+    let (_, encoding) = decode_text(&bytes);
+    Ok(encoding.into())
+}
+
+/// Detecta a codificação de um arquivo do repositório numa revisão (`svn cat -r`),
+/// para o badge no Histórico — onde o conteúdo é do servidor (não há arquivo local
+/// para ler). Custa uma ida ao servidor, então a UI só chama quando o usuário
+/// seleciona um arquivo específico. Retorna `"utf-8"`/`"iso-8859-1"`/`"binary"`/
+/// `"unknown"`; nunca falha (a UI esconde o badge quando não é `utf-8`/`iso-8859-1`).
+#[tauri::command]
+pub async fn detect_encoding_url(
+    url: String,
+    revision: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<String, String> {
+    let (mode, cfg) = config_snapshot(&state);
+    if validate_remote_url_for_read(&url, &cfg).is_err() {
+        return Ok("unknown".into());
+    }
+    let mut args: Vec<String> = vec!["cat".into(), "--non-interactive".into()];
+    if let Some(r) = revision.filter(|r| !r.trim().is_empty()) {
+        args.push("-r".into());
+        args.push(r);
+    }
+    args.push("--".into());
+    args.push(url);
+    let refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+    let Ok(bytes) = run_raw_checked_limited(&refs, None, mode, LIMIT_CAT_FILE).await else {
+        return Ok("unknown".into());
+    };
+    if bytes.iter().take(8000).any(|&b| b == 0) {
+        return Ok("binary".into());
+    }
+    let (_, encoding) = decode_text(&bytes);
+    Ok(encoding.into())
 }
 
 /// Abre um arquivo no editor de código externo configurado (Ajustes). Sem editor

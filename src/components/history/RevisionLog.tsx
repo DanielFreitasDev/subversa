@@ -12,6 +12,7 @@ import { DiffViewer } from "@/components/diff/DiffViewer";
 import type { ContentRef } from "@/components/diff/FileBlock";
 import { Avatar } from "@/components/ui/Avatar";
 import { Button, IconButton } from "@/components/ui/Button";
+import { EncodingBadge } from "@/components/ui/EncodingBadge";
 import { ContextMenu, useContextMenu, type MenuItem } from "@/components/ui/ContextMenu";
 import { Empty } from "@/components/ui/Empty";
 import { Loading } from "@/components/ui/Spinner";
@@ -128,6 +129,7 @@ export function RevisionDetail({
   const [sel, setSel] = useState<"all" | LogPath>("all");
   const [diff, setDiff] = useState("");
   const [loading, setLoading] = useState(false);
+  const [encoding, setEncoding] = useState<string | undefined>();
 
   // Volta para "revisão inteira" ao trocar de revisão.
   useEffect(() => setSel("all"), [entry.revision]);
@@ -166,6 +168,22 @@ export function RevisionDetail({
       alive = false;
     };
   }, [diffOn, entry.revision, showAsAdded, selectedPath]);
+
+  // Codificação do arquivo selecionado (badge) — via `svn cat` da revisão, pois o
+  // conteúdo é do servidor (não há arquivo local). Só para arquivo, não diretório;
+  // some ao trocar de arquivo ou voltar para "revisão inteira".
+  useEffect(() => {
+    setEncoding(undefined);
+    if (!selectedPath || selectedPath.kind === "dir") return;
+    let alive = true;
+    api
+      .detectEncodingUrl(diffOn, entry.revision)
+      .then((e) => alive && setEncoding(e))
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [diffOn, entry.revision, selectedPath]);
 
   // Conteúdo de referência (revisão REV) para expandir contexto sob demanda.
   const expandFor = useCallback(
@@ -276,6 +294,7 @@ export function RevisionDetail({
                 <span className="selectable truncate font-mono text-[12px] text-muted" title={p.path}>
                   {p.path}
                 </span>
+                {active && <EncodingBadge encoding={encoding} className="ml-auto" />}
                 {p.copyfromPath && (
                   <span className="ml-auto shrink-0 text-[10px] text-faint">
                     ← {p.copyfromPath}@{p.copyfromRev}

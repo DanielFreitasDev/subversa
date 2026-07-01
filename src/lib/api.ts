@@ -241,6 +241,21 @@ export const readTextFile = (path: string) => invoke<TextFile>("read_text_file",
 export const writeTextFile = (path: string, content: string, encoding: string) =>
   invoke<void>("write_text_file", { path, content, encoding });
 
+/**
+ * Detecta a codificação de um arquivo local para o badge da UI (sem carregar o
+ * conteúdo). Retorna `"utf-8"`, `"iso-8859-1"`, `"binary"` ou `"unknown"` (inclui
+ * caminhos não-locais, como as URLs do diff de histórico). Nunca rejeita.
+ */
+export const detectEncoding = (path: string) => invoke<string>("detect_encoding", { path });
+
+/**
+ * Detecta a codificação de um arquivo do repositório numa revisão (via `svn cat`),
+ * para o badge no Histórico — onde o conteúdo é do servidor, não do disco. Custa
+ * uma ida ao servidor; use só sob demanda (arquivo selecionado). Nunca rejeita.
+ */
+export const detectEncodingUrl = (url: string, revision?: string) =>
+  invoke<string>("detect_encoding_url", { url, revision: revision ?? null });
+
 /** Abre um arquivo no editor de código externo (ou no app padrão do sistema). */
 export const openInEditor = (path: string, editor?: string) =>
   invoke<void>("open_in_editor", { path, editor: editor ?? null });

@@ -24,6 +24,7 @@ import {
 } from "@/lib/diff";
 import type { HunkRef } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { EncodingBadge } from "@/components/ui/EncodingBadge";
 import { toast } from "@/store/toast";
 import type { DiffMode, HighlightMode, WsMode } from "@/store/ui";
 
@@ -557,6 +558,7 @@ export function FileBlock({
           <Copy className="size-3" />
         </button>
         <div className="ml-auto flex items-center gap-2 text-[11px]">
+          <EncodingBadge path={file.path} />
           {file.additions > 0 && (
             <span className="flex items-center gap-0.5 text-add">
               <Plus className="size-3" />

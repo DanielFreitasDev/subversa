@@ -15,6 +15,7 @@ import { AlertTriangle, ExternalLink, FileCode2, Save } from "lucide-react";
 
 import * as api from "@/lib/api";
 import { Button } from "@/components/ui/Button";
+import { EncodingBadge } from "@/components/ui/EncodingBadge";
 import { Modal } from "@/components/ui/Modal";
 import { Loading } from "@/components/ui/Spinner";
 import { HELP } from "@/lib/help";
@@ -63,7 +64,6 @@ export function CodeEditorModal({
 
   const dirty = !loading && !error && text !== baseline;
   const name = relPath ?? (path ? baseName(path) : "");
-  const encLabel = encoding === "iso-8859-1" ? "ISO-8859-1" : "UTF-8";
 
   // Carrega o conteúdo ao abrir / trocar de arquivo. Normaliza CRLF→LF para o
   // editor (o EOL original é restaurado ao salvar).
@@ -155,14 +155,7 @@ export function CodeEditorModal({
           <ExternalLink className="size-3.5" />
           Abrir no editor externo
         </Button>
-        {!loading && !error && (
-          <span
-            className="rounded border border-line px-1.5 py-0.5 font-mono text-[11px] text-faint"
-            title="Codificação do arquivo — preservada ao salvar"
-          >
-            {encLabel}
-          </span>
-        )}
+        {!loading && !error && <EncodingBadge encoding={encoding} />}
       </div>
       <div className="flex items-center gap-2">
         <Button variant="ghost" onClick={requestClose} disabled={saving}>
