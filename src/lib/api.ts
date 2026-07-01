@@ -98,6 +98,10 @@ export const commit = (paths: string[], message: string) =>
 
 export const svnAdd = (paths: string[]) => invoke<CommandOutput>("svn_add", { paths });
 
+/** Acrescenta um padrão ao svn:ignore da pasta (mudança local; commit publica). */
+export const addToIgnore = (dir: string, pattern: string) =>
+  invoke<CommandOutput>("add_to_ignore", { dir, pattern });
+
 export const revert = (paths: string[], recursive = false) =>
   invoke<CommandOutput>("revert", { paths, recursive });
 

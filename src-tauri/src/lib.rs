@@ -73,6 +73,7 @@ pub fn run() {
             svn::commands::update,
             svn::commands::commit,
             svn::commands::svn_add,
+            svn::commands::add_to_ignore,
             svn::commands::revert,
             svn::commands::revert_hunk,
             svn::undo::stash_revert,

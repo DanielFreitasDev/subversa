@@ -1149,6 +1149,77 @@ pub async fn svn_add(
     run(&refs, None, mode).await
 }
 
+/// Acrescenta um `pattern` (nome de arquivo ou `*.ext`) ao `svn:ignore` da
+/// pasta `dir`. O propset é LOCAL: a mudança aparece como modificação de
+/// propriedade da pasta na aba Alterações, para o usuário revisar e commitar
+/// (o commit é o que publica a regra — modelo SVN real). A pasta precisa estar
+/// versionada; num pai não versionado o próprio svn falha com o erro claro.
+#[tauri::command]
+pub async fn add_to_ignore(
+    dir: String,
+    pattern: String,
+    state: State<'_, AppState>,
+) -> Result<CommandOutput, String> {
+    let (mode, cfg) = config_snapshot(&state);
+    let abs = validate_local_path(&dir, &cfg, "pasta", true, true)?;
+    let pattern = pattern.trim().to_string();
+    if pattern.is_empty() || pattern.contains('\n') || pattern.contains('/') {
+        return Err("padrão de ignore inválido (uma linha, sem “/”).".into());
+    }
+    let dir_arg = peg_safe(&abs.to_string_lossy());
+
+    // Valor atual da propriedade. `propget` de propriedade inexistente varia
+    // entre versões do svn (vazio vs. W200017) — qualquer falha vira "vazio".
+    let current = run(
+        &["propget", "svn:ignore", "--non-interactive", "--", &dir_arg],
+        None,
+        mode,
+    )
+    .await
+    .ok()
+    .filter(|o| o.success)
+    .map(|o| o.stdout)
+    .unwrap_or_default();
+
+    let mut lines: Vec<String> = current
+        .lines()
+        .map(|l| l.trim_end().to_string())
+        .filter(|l| !l.is_empty())
+        .collect();
+    if lines.iter().any(|l| l == &pattern) {
+        return Err(format!("“{pattern}” já está no svn:ignore desta pasta."));
+    }
+    lines.push(pattern);
+    let value = format!("{}\n", lines.join("\n"));
+
+    // `-F` com arquivo temporário: robusto a valores multilinha e a padrões que
+    // comecem com '-' (mesma técnica do set_revprop_message).
+    let tmp = std::env::temp_dir().join(format!(
+        "subversa-ignore-{}-{}.txt",
+        std::process::id(),
+        next_op_id()
+    ));
+    std::fs::write(&tmp, value.as_bytes())
+        .map_err(|e| format!("não consegui preparar o svn:ignore: {e}"))?;
+    let tmp_s = tmp.to_string_lossy().to_string();
+    let out = run(
+        &[
+            "propset",
+            "svn:ignore",
+            "--non-interactive",
+            "-F",
+            &tmp_s,
+            "--",
+            &dir_arg,
+        ],
+        None,
+        mode,
+    )
+    .await;
+    let _ = std::fs::remove_file(&tmp);
+    out
+}
+
 #[tauri::command]
 pub async fn revert(
     paths: Vec<String>,

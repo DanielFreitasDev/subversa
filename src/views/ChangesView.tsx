@@ -3,6 +3,7 @@ import {
   AlertTriangle,
   CloudDownload,
   ExternalLink,
+  EyeOff,
   FilePlus2,
   Folder,
   FolderOpen,
@@ -37,7 +38,7 @@ import { useStatus } from "@/hooks/useStatus";
 import { HELP } from "@/lib/help";
 import { extractRevision, reportOutput, tryRun } from "@/lib/op";
 import type { HunkRef, StashResult, StatusEntry, WorkingCopy } from "@/lib/types";
-import { baseName, cn, dirName, statusMeta } from "@/lib/utils";
+import { baseName, cn, dirName, fileExt, statusMeta } from "@/lib/utils";
 import { confirm, useConfirmStore } from "@/store/confirm";
 import { useConfigStore } from "@/store/config";
 import { toast } from "@/store/toast";
@@ -449,6 +450,23 @@ function Changes({ wc }: { wc: WorkingCopy }) {
     }
   };
 
+  // Acrescenta um padrão ao svn:ignore da pasta-pai do item. A propriedade
+  // alterada vira uma modificação da pasta na lista — commitar publica a regra.
+  const ignorePattern = async (path: string, pattern: string) => {
+    const out = await tryRun(() => api.addToIgnore(dirName(path), pattern), "Falha ao ignorar");
+    if (
+      out &&
+      reportOutput(
+        out,
+        `“${pattern}” adicionado ao svn:ignore`,
+        "A pasta aparece como modificada — commite para a regra valer para todos.",
+      )
+    ) {
+      await reload(false);
+      await refreshOne(wc.path);
+    }
+  };
+
   // Itens do menu de contexto (botão direito) de uma linha — espelham as ações
   // que aparecem no hover e ainda oferecem "Reverter tudo" como atalho global.
   const itemsFor = (e: StatusEntry): MenuItem[] => {
@@ -474,6 +492,20 @@ function Changes({ wc }: { wc: WorkingCopy }) {
         icon: <FilePlus2 className="size-3.5" />,
         onSelect: () => addToSvn(e.path),
       });
+      items.push({
+        id: "ignore",
+        label: e.isDir ? "Ignorar esta pasta (svn:ignore)" : "Ignorar este arquivo (svn:ignore)",
+        icon: <EyeOff className="size-3.5" />,
+        onSelect: () => ignorePattern(e.path, baseName(e.path)),
+      });
+      const ext = fileExt(e.path);
+      if (!e.isDir && ext)
+        items.push({
+          id: "ignore-ext",
+          label: `Ignorar extensão (*.${ext})`,
+          icon: <EyeOff className="size-3.5" />,
+          onSelect: () => ignorePattern(e.path, `*.${ext}`),
+        });
       items.push({
         id: "delete",
         label: "Excluir do disco",

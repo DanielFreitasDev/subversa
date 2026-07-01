@@ -429,6 +429,7 @@ export function tauriInit(fx: MockData) {
       case "stash_revert":
         return { id: 0, fileCount: 0, label: String((args?.label as string) ?? "") };
       case "checkout": case "update": case "commit": case "svn_add": case "revert":
+      case "add_to_ignore":
       case "revert_hunk": case "undo_revert":
       case "remove": case "create_branch": case "switch_wc": case "merge": case "resolve":
       case "cleanup": case "delete_remote": case "export_path": case "import_path":

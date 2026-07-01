@@ -138,6 +138,7 @@ export const HELP = {
       "“Reverter” descarta as mudanças locais, voltando ao que estava antes: use o ícone (ou o botão direito do mouse) no arquivo, “Reverter selecionados” para os marcados, ou “Reverter tudo” para toda a working copy.",
       "Para desfazer só um pedaço: no diff, passe o mouse sobre um trecho alterado e clique na setinha de reverter — volta apenas aquele trecho, sem mexer no resto do arquivo (como o “>>” do IntelliJ).",
       "Botão direito num arquivo versionado → “Ver autoria (blame)”: mostra quem escreveu cada linha (da última versão enviada ao servidor).",
+      "Botão direito num arquivo fora do SVN → “Ignorar”: adiciona o nome (ou a extensão) ao svn:ignore da pasta, para ele parar de aparecer aqui. A regra vira uma modificação da pasta — commite para valer para todos.",
     ],
     note: "Letras: M = modificado, A = novo, D = apagado, C = conflito. Conflitos precisam ser resolvidos antes de commitar.",
   },
