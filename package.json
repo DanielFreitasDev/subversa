@@ -11,11 +11,12 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "check": "npm run check:frontend && npm run check:rust && npm run test:rust",
-    "check:frontend": "npm run build",
+    "check:frontend": "npm run build && npm run test:unit",
     "check:rust": "cd src-tauri && cargo fmt --check && cargo clippy --all-targets -- -D warnings",
     "test:rust": "cd src-tauri && cargo test",
     "format:check": "cd src-tauri && cargo fmt --check",
     "preview": "vite preview",
+    "test:unit": "vitest run",
     "tauri": "tauri",
     "e2e": "playwright test",
     "e2e:update": "playwright test --update-snapshots=all",
@@ -52,7 +53,8 @@
     "@vitejs/plugin-react": "^4.6.0",
     "tailwindcss": "^4.3.1",
     "typescript": "~5.8.3",
-    "vite": "^7.3.5"
+    "vite": "^7.3.5",
+    "vitest": "^4.1.9"
   },
   "overrides": {
     "esbuild": "0.28.1"

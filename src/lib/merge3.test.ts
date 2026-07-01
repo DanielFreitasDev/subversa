@@ -1,0 +1,73 @@
+import { describe, expect, it } from "vitest";
+
+import { detectEol, diff3, fromLines, toLines } from "@/lib/merge3";
+
+describe("diff3", () => {
+  it("texto igual nas três vias vira uma única região estável", () => {
+    const r = diff3(["a", "b"], ["a", "b"], ["a", "b"]);
+    expect(r).toHaveLength(1);
+    expect(r[0].kind).toBe("stable");
+    expect(r[0].base).toEqual(["a", "b"]);
+  });
+
+  it("mudança só minha é 'left' (aplicação automática)", () => {
+    const r = diff3(["a", "b", "c"], ["a", "X", "c"], ["a", "b", "c"]);
+    expect(r.map((x) => x.kind)).toEqual(["stable", "left", "stable"]);
+    expect(r[1].mine).toEqual(["X"]);
+    expect(r[1].base).toEqual(["b"]);
+  });
+
+  it("mudança só do servidor é 'right'", () => {
+    const r = diff3(["a", "b", "c"], ["a", "b", "c"], ["a", "Y", "c"]);
+    expect(r.map((x) => x.kind)).toEqual(["stable", "right", "stable"]);
+    expect(r[1].theirs).toEqual(["Y"]);
+  });
+
+  it("a mesma mudança dos dois lados é 'both'", () => {
+    const r = diff3(["a", "b", "c"], ["a", "X", "c"], ["a", "X", "c"]);
+    expect(r.map((x) => x.kind)).toEqual(["stable", "both", "stable"]);
+  });
+
+  it("mudanças divergentes no mesmo trecho são 'conflict'", () => {
+    const r = diff3(["a", "b", "c"], ["a", "X", "c"], ["a", "Y", "c"]);
+    expect(r.map((x) => x.kind)).toEqual(["stable", "conflict", "stable"]);
+    expect(r[1].mine).toEqual(["X"]);
+    expect(r[1].theirs).toEqual(["Y"]);
+  });
+
+  it("inserção de um lado só é automática", () => {
+    const r = diff3(["a", "c"], ["a", "b", "c"], ["a", "c"]);
+    expect(r.map((x) => x.kind)).toEqual(["stable", "left", "stable"]);
+    expect(r[1].mine).toEqual(["b"]);
+    expect(r[1].base).toEqual([]);
+  });
+
+  it("edições divergentes no fim do arquivo conflitam", () => {
+    const r = diff3(["a", "b"], ["a", "M"], ["a", "T"]);
+    expect(r.map((x) => x.kind)).toEqual(["stable", "conflict"]);
+  });
+});
+
+describe("EOL e linhas", () => {
+  it("detecta o fim-de-linha dominante", () => {
+    expect(detectEol("a\r\nb\r\nc\n")).toBe("\r\n");
+    expect(detectEol("a\nb\n")).toBe("\n");
+    expect(detectEol("")).toBe("\n");
+  });
+
+  it("toLines separa linhas e marca a quebra final", () => {
+    expect(toLines("a\r\nb\r\n")).toEqual({ lines: ["a", "b"], trailingEol: true });
+    expect(toLines("a\nb")).toEqual({ lines: ["a", "b"], trailingEol: false });
+    expect(toLines("")).toEqual({ lines: [], trailingEol: false });
+  });
+
+  it("fromLines reconstrói no estilo original (roundtrip)", () => {
+    expect(fromLines(["a", "b"], "\r\n", true)).toBe("a\r\nb\r\n");
+    expect(fromLines(["a", "b"], "\n", false)).toBe("a\nb");
+    expect(fromLines([], "\n", true)).toBe("");
+
+    const original = "x\r\ny\r\n";
+    const { lines, trailingEol } = toLines(original);
+    expect(fromLines(lines, detectEol(original), trailingEol)).toBe(original);
+  });
+});
