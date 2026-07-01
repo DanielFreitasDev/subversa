@@ -115,7 +115,7 @@ fn read_all(root: &Path) -> Vec<(BackupEntry, PathBuf)> {
             }
         }
     }
-    out.sort_by(|a, b| b.0.created_ms.cmp(&a.0.created_ms));
+    out.sort_by_key(|(m, _)| std::cmp::Reverse(m.created_ms));
     out
 }
 
