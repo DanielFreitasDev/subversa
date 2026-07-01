@@ -1,6 +1,9 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   AlertTriangle,
+  Archive,
+  ArchiveRestore,
+  ChevronRight,
   CloudDownload,
   ExternalLink,
   EyeOff,
@@ -29,7 +32,8 @@ import { Button } from "@/components/ui/Button";
 import { Checkbox } from "@/components/ui/Checkbox";
 import { ContextMenu, useContextMenu, type MenuItem } from "@/components/ui/ContextMenu";
 import { Loading } from "@/components/ui/Spinner";
-import { Textarea } from "@/components/ui/Field";
+import { Input, Label, Textarea } from "@/components/ui/Field";
+import { Modal } from "@/components/ui/Modal";
 import { Tooltip } from "@/components/ui/Tooltip";
 import { HelpPopover } from "@/components/ui/HelpPopover";
 import { useActions } from "@/hooks/useActions";
@@ -37,8 +41,8 @@ import { useSelectedWc } from "@/hooks/useSelectedWc";
 import { useStatus } from "@/hooks/useStatus";
 import { HELP } from "@/lib/help";
 import { extractRevision, reportOutput, tryRun } from "@/lib/op";
-import type { HunkRef, StashResult, StatusEntry, WorkingCopy } from "@/lib/types";
-import { baseName, cn, dirName, fileExt, statusMeta } from "@/lib/utils";
+import type { HunkRef, ShelfEntry, StashResult, StatusEntry, WorkingCopy } from "@/lib/types";
+import { baseName, cn, dirName, fileExt, formatRelative, statusMeta } from "@/lib/utils";
 import { confirm, useConfirmStore } from "@/store/confirm";
 import { useConfigStore } from "@/store/config";
 import { toast } from "@/store/toast";
@@ -231,6 +235,11 @@ function Changes({ wc }: { wc: WorkingCopy }) {
   const [checkingServer, setCheckingServer] = useState(false);
   const [conflictPath, setConflictPath] = useState<string | null>(null);
   const [blameReq, setBlameReq] = useState<BlameRequest | null>(null);
+  const [shelves, setShelves] = useState<ShelfEntry[]>([]);
+  const [shelvesOpen, setShelvesOpen] = useState(false);
+  const [shelfOpen, setShelfOpen] = useState(false);
+  const [shelfName, setShelfName] = useState("");
+  const [shelving, setShelving] = useState(false);
   // Editor visual de 3 painéis (conflitos de texto); o ConflictDialog cobre
   // árvore/propriedade/binário e serve de fallback.
   const [mergePath, setMergePath] = useState<string | null>(null);
@@ -464,6 +473,68 @@ function Changes({ wc }: { wc: WorkingCopy }) {
     ) {
       await reload(false);
       await refreshOne(wc.path);
+    }
+  };
+
+  // --- Guardados para depois (shelves) ---------------------------------------
+
+  const loadShelves = useCallback(async () => {
+    const all = await api.listShelves().catch(() => [] as ShelfEntry[]);
+    setShelves(all.filter((s) => s.wcPath === wc.path));
+  }, [wc.path]);
+
+  useEffect(() => {
+    loadShelves();
+  }, [loadShelves]);
+
+  /** Guarda os arquivos marcados com o nome digitado (captura + limpa a WC). */
+  const doShelve = async () => {
+    const paths = selectedEntries.map((e) => e.path);
+    if (!paths.length || !shelfName.trim()) return;
+    setShelving(true);
+    const res = await tryRun(() => api.shelve(wc.path, paths, shelfName.trim()), "Falha ao guardar");
+    setShelving(false);
+    if (!res) return;
+    setShelfOpen(false);
+    setShelvesOpen(true);
+    toast.success(
+      "Guardado para depois",
+      `“${res.name}” — ${res.fileCount} arquivo(s) saíram da working copy; aplique de volta quando quiser.`,
+    );
+    await reload(false);
+    await refreshOne(wc.path);
+    await loadShelves();
+  };
+
+  const applyShelf = async (s: ShelfEntry) => {
+    const ok = await confirm({
+      title: `Aplicar “${s.name}” de volta?`,
+      message:
+        `${s.fileCount} arquivo(s) voltam para a working copy. Se algum deles mudou depois de guardar, ` +
+        "o conteúdo atual será sobrescrito pelo guardado.",
+      confirmLabel: "Aplicar",
+    });
+    if (!ok) return;
+    const out = await tryRun(() => api.unshelve(s.id), "Falha ao aplicar o guardado");
+    if (out && reportOutput(out, "Guardado aplicado", `“${s.name}” voltou para a working copy`)) {
+      await reload(false);
+      await refreshOne(wc.path);
+      await loadShelves();
+    }
+  };
+
+  const removeShelf = async (s: ShelfEntry) => {
+    const ok = await confirm({
+      title: `Excluir o guardado “${s.name}”?`,
+      message: "O conteúdo guardado será apagado do disco. Não dá para desfazer.",
+      confirmLabel: "Excluir",
+      danger: true,
+    });
+    if (!ok) return;
+    const done = await tryRun(() => api.deleteShelf(s.id), "Falha ao excluir o guardado");
+    if (done !== null) {
+      toast.success("Guardado excluído");
+      await loadShelves();
     }
   };
 
@@ -725,6 +796,52 @@ function Changes({ wc }: { wc: WorkingCopy }) {
           )}
         </div>
 
+        {/* Guardados para depois (shelves) desta working copy */}
+        {shelves.length > 0 && (
+          <div className="border-t border-line">
+            <button
+              onClick={() => setShelvesOpen((o) => !o)}
+              className="flex w-full items-center gap-2 px-4 py-2 text-[12px] font-medium text-muted transition-colors hover:bg-panel-2"
+            >
+              <Archive className="size-3.5 text-brand" />
+              Guardados para depois
+              <span className="rounded-full bg-panel-2 px-1.5 py-0.5 text-[10px] text-faint">
+                {shelves.length}
+              </span>
+              <ChevronRight
+                className={cn("ml-auto size-3.5 text-faint transition-transform", shelvesOpen && "rotate-90")}
+              />
+            </button>
+            {shelvesOpen &&
+              shelves.map((s) => (
+                <div key={s.id} className="flex items-center gap-2 px-4 py-1.5 text-[12px] hover:bg-panel-2/50">
+                  <span className="min-w-0 flex-1 truncate text-ink" title={s.name}>
+                    {s.name}
+                  </span>
+                  <span className="shrink-0 text-[11px] text-faint">
+                    {s.fileCount} arq. · {formatRelative(new Date(s.createdMs).toISOString())}
+                  </span>
+                  <Tooltip label="Aplicar de volta na working copy">
+                    <button
+                      onClick={() => applyShelf(s)}
+                      className="flex size-6 items-center justify-center rounded text-faint transition-colors hover:bg-panel-3 hover:text-brand"
+                    >
+                      <ArchiveRestore className="size-3.5" />
+                    </button>
+                  </Tooltip>
+                  <Tooltip label="Excluir o guardado">
+                    <button
+                      onClick={() => removeShelf(s)}
+                      className="flex size-6 items-center justify-center rounded text-faint transition-colors hover:bg-conflict/15 hover:text-conflict"
+                    >
+                      <Trash2 className="size-3.5" />
+                    </button>
+                  </Tooltip>
+                </div>
+              ))}
+          </div>
+        )}
+
         {/* Compositor de commit */}
         <div className="border-t border-line p-3">
           {wc.isMainline && entries.length > 0 && (
@@ -760,6 +877,17 @@ function Changes({ wc }: { wc: WorkingCopy }) {
                 className="text-[12px] text-faint transition-colors hover:text-danger disabled:opacity-40"
               >
                 Reverter tudo
+              </button>
+              <button
+                onClick={() => {
+                  setShelfName("");
+                  setShelfOpen(true);
+                }}
+                disabled={!selectedEntries.length || committing}
+                title="Tira as mudanças marcadas da working copy e as guarda com um nome, para aplicar de volta depois"
+                className="text-[12px] text-faint transition-colors hover:text-ink disabled:opacity-40"
+              >
+                Guardar para depois
               </button>
             </div>
             <Button variant="primary" onClick={doCommit} loading={committing} disabled={!selectedEntries.length}>
@@ -883,6 +1011,44 @@ function Changes({ wc }: { wc: WorkingCopy }) {
 
       <ContextMenu menu={ctx.menu} onClose={ctx.close} />
       <BlameModal req={blameReq} onClose={() => setBlameReq(null)} />
+
+      {/* Nome do guardado (shelve) */}
+      <Modal
+        open={shelfOpen}
+        onClose={() => !shelving && setShelfOpen(false)}
+        size="sm"
+        icon={<Archive className="size-5" />}
+        title="Guardar para depois"
+        description="Tira as mudanças marcadas da working copy e as guarda com um nome; aplique de volta quando quiser."
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setShelfOpen(false)} disabled={shelving}>
+              Cancelar
+            </Button>
+            <Button variant="primary" onClick={doShelve} loading={shelving} disabled={!shelfName.trim()}>
+              {!shelving && <Archive className="size-4" />}
+              Guardar {selectedEntries.length > 0 && `(${selectedEntries.length})`}
+            </Button>
+          </>
+        }
+      >
+        <Label>
+          Nome do guardado
+          <Input
+            value={shelfName}
+            onChange={(e) => setShelfName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && shelfName.trim()) {
+                e.preventDefault();
+                doShelve();
+              }
+            }}
+            placeholder="ex.: ajuste do relatório (issue 1234)"
+            className="mt-1"
+            autoFocus
+          />
+        </Label>
+      </Modal>
     </div>
   );
 }

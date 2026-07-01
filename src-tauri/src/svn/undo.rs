@@ -77,7 +77,10 @@ pub fn clear_disk() {
 /// Status svn (campo `item`) de cada caminho, por `svn status --xml`. Caminhos
 /// em estado normal não aparecem na saída — o chamador assume um padrão. Em caso
 /// de falha, devolve vazio (o chamador cai no padrão para todos).
-async fn status_of(paths: &[String], mode: super::types::SshMode) -> Vec<(String, String)> {
+pub(crate) async fn status_of(
+    paths: &[String],
+    mode: super::types::SshMode,
+) -> Vec<(String, String)> {
     let targets: Vec<String> = paths.iter().map(|p| peg_safe(p)).collect();
     let mut args: Vec<&str> = vec!["status", "--xml", "--"];
     args.extend(targets.iter().map(|s| s.as_str()));

@@ -102,6 +102,21 @@ export interface BackupEntry {
   fileCount: number;
 }
 
+/**
+ * Um "guardado para depois" (shelf): mudanças locais capturadas com nome e
+ * persistidas em disco, aplicáveis de volta quando quiser. Espelha `ShelfEntry`.
+ */
+export interface ShelfEntry {
+  id: string;
+  name: string;
+  wcPath: string;
+  wcName: string;
+  /** Momento da criação, em epoch milissegundos (UTC). */
+  createdMs: number;
+  fileCount: number;
+  sizeBytes: number;
+}
+
 /** Uma entrada do registro de comandos (auditoria do que o app rodou no `svn`). */
 export interface CommandLogEntry {
   /** Sequência monotônica desde o início da sessão (id estável). */

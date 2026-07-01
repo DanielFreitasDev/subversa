@@ -141,6 +141,27 @@ pub struct BackupEntry {
     pub file_count: u64,
 }
 
+/// Um "guardado para depois" (shelf): mudanças locais capturadas com nome e
+/// persistidas em disco, aplicáveis de volta quando o usuário quiser.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ShelfEntry {
+    /// Identificador único (também é o nome da pasta do shelf em disco).
+    pub id: String,
+    /// Nome dado pelo usuário (ex.: "ajuste do relatório").
+    pub name: String,
+    /// Caminho absoluto da working copy de origem.
+    pub wc_path: String,
+    /// Nome da pasta da working copy (ex.: `sna`).
+    pub wc_name: String,
+    /// Momento da criação, em epoch milissegundos (UTC).
+    pub created_ms: u64,
+    /// Quantidade de arquivos guardados.
+    pub file_count: u32,
+    /// Tamanho total dos blobs, em bytes.
+    pub size_bytes: u64,
+}
+
 /// Disponibilidade dos binários externos exigidos em tempo de execução.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]

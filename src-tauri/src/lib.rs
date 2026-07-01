@@ -120,6 +120,11 @@ pub fn run() {
             svn::backup::restore_backup,
             svn::backup::delete_backup,
             svn::backup::backups_dir,
+            // guardados para depois (shelves)
+            svn::shelf::shelve,
+            svn::shelf::list_shelves,
+            svn::shelf::unshelve,
+            svn::shelf::delete_shelf,
         ])
         .on_window_event(move |_window, event| {
             // Ao fechar a janela, encerra a conexão SSH mestre (best-effort).

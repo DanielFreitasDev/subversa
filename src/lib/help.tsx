@@ -139,6 +139,7 @@ export const HELP = {
       "Para desfazer só um pedaço: no diff, passe o mouse sobre um trecho alterado e clique na setinha de reverter — volta apenas aquele trecho, sem mexer no resto do arquivo (como o “>>” do IntelliJ).",
       "Botão direito num arquivo versionado → “Ver autoria (blame)”: mostra quem escreveu cada linha (da última versão enviada ao servidor).",
       "Botão direito num arquivo fora do SVN → “Ignorar”: adiciona o nome (ou a extensão) ao svn:ignore da pasta, para ele parar de aparecer aqui. A regra vira uma modificação da pasta — commite para valer para todos.",
+      "“Guardar para depois” tira as mudanças marcadas da working copy e as guarda com um nome (como o stash do Git). Elas ficam na seção “Guardados para depois”, de onde você aplica de volta ou exclui — e sobrevivem ao fechar o app.",
     ],
     note: "Letras: M = modificado, A = novo, D = apagado, C = conflito. Conflitos precisam ser resolvidos antes de commitar.",
   },

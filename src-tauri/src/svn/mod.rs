@@ -8,5 +8,6 @@ pub mod conn;
 pub mod hunk;
 pub mod parser;
 pub mod runner;
+pub mod shelf;
 pub mod types;
 pub mod undo;

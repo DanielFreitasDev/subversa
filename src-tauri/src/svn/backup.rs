@@ -42,7 +42,7 @@ fn backups_root(cfg: &AppConfig) -> Result<PathBuf, String> {
     Ok(dir)
 }
 
-fn now_ms() -> u64 {
+pub(crate) fn now_ms() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_millis() as u64)
@@ -51,7 +51,7 @@ fn now_ms() -> u64 {
 
 /// Substitui qualquer caractere fora de `[A-Za-z0-9-_]` por `_`, para compor um
 /// `id`/nome de pasta seguro a partir do nome da working copy.
-fn sanitize(name: &str) -> String {
+pub(crate) fn sanitize(name: &str) -> String {
     name.chars()
         .map(|c| {
             if c.is_ascii_alphanumeric() || matches!(c, '-' | '_') {
@@ -65,7 +65,7 @@ fn sanitize(name: &str) -> String {
 
 /// Valida o formato de um `id` de backup vindo do frontend (evita travessia de
 /// caminho: o `id` é usado como nome de pasta sob a raiz dos backups).
-fn validate_id(id: &str) -> Result<(), String> {
+pub(crate) fn validate_id(id: &str) -> Result<(), String> {
     let bad = id.is_empty()
         || id.len() > 200
         || id.contains('/')

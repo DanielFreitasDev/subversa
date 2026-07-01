@@ -19,6 +19,7 @@ import type {
   ListEntry,
   LogEntry,
   Prerequisites,
+  ShelfEntry,
   StashResult,
   StatusResult,
   TextFile,
@@ -212,6 +213,21 @@ export const deleteBackup = (id: string) => invoke<void>("delete_backup", { id }
 
 /** Caminho da pasta de backups (para abrir no gerenciador de arquivos). */
 export const backupsDir = () => invoke<string>("backups_dir");
+
+// --- guardados para depois (shelves) ----------------------------------------
+
+/** Guarda as mudanças de `paths` com um nome (captura + limpa a WC). */
+export const shelve = (wcPath: string, paths: string[], name: string) =>
+  invoke<ShelfEntry>("shelve", { wcPath, paths, name });
+
+/** Todos os guardados (mais recentes primeiro); filtre por `wcPath` na UI. */
+export const listShelves = () => invoke<ShelfEntry[]>("list_shelves");
+
+/** Aplica um guardado de volta na WC e o consome (como `stash pop`). */
+export const unshelve = (id: string) => invoke<CommandOutput>("unshelve", { id });
+
+/** Exclui um guardado sem aplicá-lo. */
+export const deleteShelf = (id: string) => invoke<void>("delete_shelf", { id });
 
 // --- config + utilidades ---------------------------------------------------
 

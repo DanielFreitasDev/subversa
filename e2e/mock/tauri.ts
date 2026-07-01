@@ -426,6 +426,18 @@ export function tauriInit(fx: MockData) {
         return null;
       case "backups_dir":
         return "/home/daniel/.cache/subversa/backups";
+      case "shelve":
+        return {
+          id: "guardado-1", name: String((args?.name as string) ?? "guardado"),
+          wcPath: String((args?.wcPath as string) ?? ""), wcName: "sna",
+          createdMs: 1782216000000, fileCount: (args?.paths as string[])?.length ?? 0, sizeBytes: 2048,
+        };
+      case "list_shelves":
+        return [];
+      case "unshelve":
+        return ok("aplicar guardado");
+      case "delete_shelf":
+        return null;
       case "stash_revert":
         return { id: 0, fileCount: 0, label: String((args?.label as string) ?? "") };
       case "checkout": case "update": case "commit": case "svn_add": case "revert":
