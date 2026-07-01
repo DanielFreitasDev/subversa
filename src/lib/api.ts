@@ -21,6 +21,7 @@ import type {
   Prerequisites,
   StashResult,
   StatusResult,
+  TextFile,
   UrlInfo,
   WorkingCopy,
 } from "./types";
@@ -229,12 +230,16 @@ export const openExternalDiff = (target: string, tool?: string) =>
 
 // --- edição de arquivos da cópia de trabalho -------------------------------
 
-/** Lê um arquivo da cópia de trabalho (do disco) como texto, para o editor embutido. */
-export const readTextFile = (path: string) => invoke<string>("read_text_file", { path });
+/**
+ * Lê um arquivo da cópia de trabalho (do disco) para o editor embutido, com a
+ * codificação detectada (UTF-8 ou ISO-8859-1). Passe o `encoding` de volta em
+ * `writeTextFile` para regravar na codificação original.
+ */
+export const readTextFile = (path: string) => invoke<TextFile>("read_text_file", { path });
 
-/** Grava o conteúdo editado de volta no arquivo (gravação atômica em disco). */
-export const writeTextFile = (path: string, content: string) =>
-  invoke<void>("write_text_file", { path, content });
+/** Grava o conteúdo editado de volta no arquivo (gravação atômica, na codificação `encoding`). */
+export const writeTextFile = (path: string, content: string, encoding: string) =>
+  invoke<void>("write_text_file", { path, content, encoding });
 
 /** Abre um arquivo no editor de código externo (ou no app padrão do sistema). */
 export const openInEditor = (path: string, editor?: string) =>

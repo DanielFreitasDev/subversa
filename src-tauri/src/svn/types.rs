@@ -42,6 +42,18 @@ pub struct StashResult {
     pub label: String,
 }
 
+/// Conteúdo de um arquivo aberto no editor embutido, junto com a codificação
+/// detectada. O `encoding` volta para a UI e é devolvido intacto na gravação para
+/// preservar a codificação original — não "promover" ISO-8859-1 → UTF-8 sem querer,
+/// o que geraria diffs enormes e poderia quebrar o build que espera latino-1.
+/// Valores: `"utf-8"` ou `"iso-8859-1"`.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TextFile {
+    pub content: String,
+    pub encoding: String,
+}
+
 /// Detalhes de um conflito para o editor de mesclagem em 3 painéis.
 ///
 /// `kind`: `text` (conteúdo, abre o editor), `tree` (árvore), `property`

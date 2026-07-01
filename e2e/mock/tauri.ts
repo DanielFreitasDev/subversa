@@ -382,7 +382,11 @@ export function tauriInit(fx: MockData) {
       case "write_text_file":
         return null;
       case "read_text_file":
-        return "package br.tjsc.sna.processo;\n\npublic class ProcessoService {\n  // editar aqui…\n}\n";
+        return {
+          content:
+            "package br.tjsc.sna.processo;\n\npublic class ProcessoService {\n  // editar aqui…\n}\n",
+          encoding: "utf-8",
+        };
       case "get_command_log":
         return fx.commandLog;
       case "clear_command_log":

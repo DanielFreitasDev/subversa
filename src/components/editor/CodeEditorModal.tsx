@@ -56,10 +56,14 @@ export function CodeEditorModal({
   const [text, setText] = useState("");
   const [baseline, setBaseline] = useState("");
   const [eol, setEol] = useState<"\n" | "\r\n">("\n");
+  // Codificação detectada na leitura, devolvida ao salvar para preservar o arquivo
+  // (ISO-8859-1 continua ISO-8859-1 — não vira UTF-8 sem querer).
+  const [encoding, setEncoding] = useState("utf-8");
   const [saving, setSaving] = useState(false);
 
   const dirty = !loading && !error && text !== baseline;
   const name = relPath ?? (path ? baseName(path) : "");
+  const encLabel = encoding === "iso-8859-1" ? "ISO-8859-1" : "UTF-8";
 
   // Carrega o conteúdo ao abrir / trocar de arquivo. Normaliza CRLF→LF para o
   // editor (o EOL original é restaurado ao salvar).
@@ -72,11 +76,12 @@ export function CodeEditorModal({
     setBaseline("");
     api
       .readTextFile(path)
-      .then((raw) => {
+      .then(({ content, encoding: enc }) => {
         if (!alive) return;
-        const crlf = raw.includes("\r\n");
+        setEncoding(enc);
+        const crlf = content.includes("\r\n");
         setEol(crlf ? "\r\n" : "\n");
-        const norm = crlf ? raw.replace(/\r\n/g, "\n") : raw;
+        const norm = crlf ? content.replace(/\r\n/g, "\n") : content;
         setText(norm);
         setBaseline(norm);
       })
@@ -94,7 +99,7 @@ export function CodeEditorModal({
     setSaving(true);
     try {
       const restored = eol === "\r\n" ? text.replace(/\n/g, "\r\n") : text;
-      await api.writeTextFile(path, restored);
+      await api.writeTextFile(path, restored, encoding);
       setBaseline(text);
       toast.success("Arquivo salvo", name || undefined);
       onSaved?.();
@@ -145,10 +150,20 @@ export function CodeEditorModal({
 
   const footer = (
     <div className="flex w-full items-center justify-between gap-3">
-      <Button variant="ghost" size="sm" onClick={openExternal} disabled={!path}>
-        <ExternalLink className="size-3.5" />
-        Abrir no editor externo
-      </Button>
+      <div className="flex items-center gap-2">
+        <Button variant="ghost" size="sm" onClick={openExternal} disabled={!path}>
+          <ExternalLink className="size-3.5" />
+          Abrir no editor externo
+        </Button>
+        {!loading && !error && (
+          <span
+            className="rounded border border-line px-1.5 py-0.5 font-mono text-[11px] text-faint"
+            title="Codificação do arquivo — preservada ao salvar"
+          >
+            {encLabel}
+          </span>
+        )}
+      </div>
       <div className="flex items-center gap-2">
         <Button variant="ghost" onClick={requestClose} disabled={saving}>
           {dirty ? "Descartar" : "Fechar"}

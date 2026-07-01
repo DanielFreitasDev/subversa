@@ -15,6 +15,16 @@ export interface CommandOutput {
   command: string;
 }
 
+/**
+ * Conteúdo de um arquivo aberto no editor embutido + a codificação detectada
+ * (`"utf-8"` ou `"iso-8859-1"`). O `encoding` é devolvido intacto na gravação para
+ * preservar a codificação original (ver `readTextFile`/`writeTextFile`).
+ */
+export interface TextFile {
+  content: string;
+  encoding: string;
+}
+
 /** Resultado de um stash de desfazer (ver `stashRevert`). `id === 0` = nada a desfazer. */
 export interface StashResult {
   id: number;

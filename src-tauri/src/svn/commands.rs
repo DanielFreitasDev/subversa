@@ -1912,12 +1912,93 @@ pub fn open_external_diff(
 // Edição de arquivos da cópia de trabalho (editor embutido / externo)
 // ---------------------------------------------------------------------------
 
-/// Lê o conteúdo de um arquivo da cópia de trabalho (do disco) como texto UTF-8,
-/// para edição no editor embutido. Diferente de [`cat_file`] (que lê a BASE do
-/// SVN), este traz o estado ATUAL do arquivo — com as alterações locais. Recusa
-/// binários e arquivos grandes demais; nesses casos a UI oferece o editor externo.
+/// Decodifica os bytes de um arquivo em `String` para edição. Tenta UTF-8 estrito;
+/// se não for UTF-8 válido, assume ISO-8859-1 (latino-1) — cada byte `0x00–0xFF`
+/// mapeia direto para `U+0000–U+00FF`, então a decodificação nunca falha e o
+/// roundtrip byte-a-byte é exato. Muitos arquivos desta equipe são latino-1.
+/// Devolve o texto e o rótulo da codificação (para restaurar na gravação).
+fn decode_text(bytes: Vec<u8>) -> (String, &'static str) {
+    match String::from_utf8(bytes) {
+        Ok(s) => (s, "utf-8"),
+        // `into_bytes` recupera o vetor sem cópia; latino-1 é 1 byte = 1 code point.
+        Err(e) => (
+            e.into_bytes().iter().map(|&b| b as char).collect::<String>(),
+            "iso-8859-1",
+        ),
+    }
+}
+
+/// Re-codifica o texto editado de volta na codificação original. Para ISO-8859-1
+/// cada caractere precisa caber em um byte (`<= U+00FF`); se o usuário inseriu algo
+/// fora do latino-1 (ex.: €, emoji, aspas "curvas"), a gravação é recusada com uma
+/// mensagem clara — nunca corrompemos silenciosamente nem promovemos o arquivo para
+/// UTF-8 sem o usuário pedir (converter é possível pelo editor externo).
+fn encode_text(content: &str, encoding: &str) -> Result<Vec<u8>, String> {
+    if encoding != "iso-8859-1" {
+        return Ok(content.as_bytes().to_vec());
+    }
+    let mut out = Vec::with_capacity(content.len());
+    let mut bad: Vec<char> = Vec::new();
+    for ch in content.chars() {
+        let cp = ch as u32;
+        if cp <= 0xFF {
+            out.push(cp as u8);
+        } else if !bad.contains(&ch) && bad.len() < 8 {
+            bad.push(ch);
+        }
+    }
+    if !bad.is_empty() {
+        let list = bad.iter().map(|c| format!("“{c}”")).collect::<Vec<_>>().join(", ");
+        return Err(format!(
+            "estes caracteres não existem em ISO-8859-1 (latino-1): {list}. Remova-os para salvar, \
+             ou use o editor externo para converter o arquivo em UTF-8."
+        ));
+    }
+    Ok(out)
+}
+
+#[cfg(test)]
+mod encoding_tests {
+    use super::{decode_text, encode_text};
+
+    #[test]
+    fn utf8_faz_roundtrip_exato() {
+        let bytes = "Configurações de autenticação".as_bytes().to_vec();
+        let (text, enc) = decode_text(bytes.clone());
+        assert_eq!(enc, "utf-8");
+        assert_eq!(text, "Configurações de autenticação");
+        assert_eq!(encode_text(&text, enc).unwrap(), bytes);
+    }
+
+    #[test]
+    fn latino1_decodifica_e_preserva_os_bytes() {
+        // "Configuração" em ISO-8859-1: ç = 0xE7, ã = 0xE3 (fora do ASCII, não é UTF-8).
+        let bytes = vec![
+            b'C', b'o', b'n', b'f', b'i', b'g', b'u', b'r', b'a', 0xE7, 0xE3, b'o',
+        ];
+        let (text, enc) = decode_text(bytes.clone());
+        assert_eq!(enc, "iso-8859-1");
+        assert_eq!(text, "Configuração");
+        // O que importa: regravar devolve os MESMOS bytes (não "promove" para UTF-8).
+        assert_eq!(encode_text(&text, enc).unwrap(), bytes);
+    }
+
+    #[test]
+    fn latino1_recusa_caractere_fora_da_tabela() {
+        // Usuário editou um arquivo latino-1 e digitou "€" (U+20AC), que não existe nele.
+        let err = encode_text("preço: 10€", "iso-8859-1").unwrap_err();
+        assert!(err.contains('€'), "a mensagem deve citar o caractere: {err}");
+    }
+}
+
+/// Lê o conteúdo de um arquivo da cópia de trabalho (do disco) para edição no
+/// editor embutido, detectando a codificação (UTF-8 ou ISO-8859-1). Diferente de
+/// [`cat_file`] (que lê a BASE do SVN), este traz o estado ATUAL do arquivo — com
+/// as alterações locais. Recusa binários e arquivos grandes demais; nesses casos a
+/// UI oferece o editor externo. A codificação volta junto para ser preservada na
+/// gravação (ver [`write_text_file`]).
 #[tauri::command]
-pub async fn read_text_file(path: String, state: State<'_, AppState>) -> Result<String, String> {
+pub async fn read_text_file(path: String, state: State<'_, AppState>) -> Result<TextFile, String> {
     let (_, cfg) = config_snapshot(&state);
     let abs = validate_local_path(&path, &cfg, "arquivo", false, false)?;
     let meta = std::fs::metadata(&abs).map_err(|e| format!("não consegui abrir o arquivo: {e}"))?;
@@ -1938,18 +2019,23 @@ pub async fn read_text_file(path: String, state: State<'_, AppState>) -> Result<
             "arquivo binário — não dá para editar como texto. Use o editor externo.".into(),
         );
     }
-    String::from_utf8(bytes)
-        .map_err(|_| "o arquivo não é texto UTF-8 válido — use o editor externo.".to_string())
+    let (content, encoding) = decode_text(bytes);
+    Ok(TextFile {
+        content,
+        encoding: encoding.into(),
+    })
 }
 
 /// Grava o conteúdo editado de volta no arquivo da cópia de trabalho, de forma
 /// atômica (temp + rename). NÃO toca no SVN: só altera o arquivo em disco — o
 /// `svn status` volta como "modificado" e o usuário decide se commita. O `content`
-/// já vem do editor com o EOL correto.
+/// já vem do editor com o EOL correto; `encoding` é o rótulo devolvido pela leitura,
+/// usado para regravar na codificação original (preserva latino-1; ver `encode_text`).
 #[tauri::command]
 pub async fn write_text_file(
     path: String,
     content: String,
+    encoding: String,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
     let (_, cfg) = config_snapshot(&state);
@@ -1957,7 +2043,8 @@ pub async fn write_text_file(
     if !abs.is_file() {
         return Err("o arquivo não existe mais.".into());
     }
-    write_atomic(&abs, content.as_bytes())
+    let bytes = encode_text(&content, &encoding)?;
+    write_atomic(&abs, &bytes)
 }
 
 /// Abre um arquivo no editor de código externo configurado (Ajustes). Sem editor
