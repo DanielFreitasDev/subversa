@@ -829,27 +829,45 @@ pub async fn cat_file(
     Ok(decode_text(&bytes).0)
 }
 
-/// Autoria por linha (`svn blame`) combinada com o conteúdo (`svn cat`).
+/// Autoria por linha (`svn blame`) combinada com o conteúdo (`svn cat`), ambos
+/// opcionalmente numa revisão (`-r`). Aceita URL remota (navegador/histórico)
+/// ou caminho local da working copy (aba Alterações — anota a BASE do arquivo).
 #[tauri::command]
-pub async fn blame(target: String, state: State<'_, AppState>) -> Result<Vec<BlameLine>, String> {
+pub async fn blame(
+    target: String,
+    revision: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<Vec<BlameLine>, String> {
     let (mode, cfg) = config_snapshot(&state);
-    validate_remote_url_for_read(&target, &cfg)?;
+    if looks_like_remote_url(&target) {
+        validate_remote_url_for_read(&target, &cfg)?;
+    } else {
+        validate_local_path(&target, &cfg, "arquivo", true, false)?;
+    }
     let target = peg_safe(&target);
-    let xml = run_checked_limited(
-        &["blame", "--xml", "--non-interactive", "--", &target],
-        None,
-        mode,
-        LIMIT_BLAME,
-    )
-    .await?;
-    let content = run_checked_limited(
-        &["cat", "--non-interactive", "--", &target],
-        None,
-        mode,
-        LIMIT_BLAME,
-    )
-    .await
-    .unwrap_or_default();
+    let rev = revision.filter(|r| !r.trim().is_empty());
+
+    let mut blame_args: Vec<&str> = vec!["blame", "--xml", "--non-interactive"];
+    if let Some(r) = rev.as_deref() {
+        blame_args.push("-r");
+        blame_args.push(r);
+    }
+    blame_args.push("--");
+    blame_args.push(&target);
+    let xml = run_checked_limited(&blame_args, None, mode, LIMIT_BLAME).await?;
+
+    let mut cat_args: Vec<&str> = vec!["cat", "--non-interactive"];
+    if let Some(r) = rev.as_deref() {
+        cat_args.push("-r");
+        cat_args.push(r);
+    }
+    cat_args.push("--");
+    cat_args.push(&target);
+    // Bytes crus + decode: preserva latino-1 no conteúdo anotado (sem mojibake).
+    let content = run_raw_checked_limited(&cat_args, None, mode, LIMIT_BLAME)
+        .await
+        .map(|b| decode_text(&b).0)
+        .unwrap_or_default();
     parser::parse_blame(&xml, &content)
 }
 

@@ -75,7 +75,9 @@ export const cancelOp = (id: number) => invoke<boolean>("cancel_op", { id });
 export const catFile = (target: string, revision?: string) =>
   invoke<string>("cat_file", { target, revision: revision ?? null });
 
-export const blame = (target: string) => invoke<BlameLine[]>("blame", { target });
+/** Autoria por linha. `target` = URL remota ou caminho local; `revision` opcional. */
+export const blame = (target: string, revision?: string) =>
+  invoke<BlameLine[]>("blame", { target, revision: revision ?? null });
 
 /** Info de um nó remoto (revisão no breadcrumb; validação de localização). */
 export const getUrlInfo = (url: string) => invoke<UrlInfo>("get_url_info", { url });

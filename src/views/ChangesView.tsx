@@ -14,9 +14,11 @@ import {
   ShieldAlert,
   Trash2,
   Upload,
+  Users,
 } from "lucide-react";
 
 import * as api from "@/lib/api";
+import { BlameModal, type BlameRequest } from "@/components/blame/BlameModal";
 import { DiffViewer } from "@/components/diff/DiffViewer";
 import { ConflictDialog } from "@/components/dialogs/ConflictDialog";
 import { MergeEditor } from "@/components/merge/MergeEditor";
@@ -227,6 +229,7 @@ function Changes({ wc }: { wc: WorkingCopy }) {
   const [committing, setCommitting] = useState(false);
   const [checkingServer, setCheckingServer] = useState(false);
   const [conflictPath, setConflictPath] = useState<string | null>(null);
+  const [blameReq, setBlameReq] = useState<BlameRequest | null>(null);
   // Editor visual de 3 painéis (conflitos de texto); o ConflictDialog cobre
   // árvore/propriedade/binário e serve de fallback.
   const [mergePath, setMergePath] = useState<string | null>(null);
@@ -485,6 +488,16 @@ function Changes({ wc }: { wc: WorkingCopy }) {
         icon: <RotateCcw className="size-3.5" />,
         danger: true,
         onSelect: () => revertPaths([e.path]),
+      });
+    }
+
+    // Autoria da BASE: só faz sentido para arquivo já versionado no servidor.
+    if (!isUnversioned && !e.isDir && e.item !== "added") {
+      items.push({
+        id: "blame",
+        label: "Ver autoria (blame)",
+        icon: <Users className="size-3.5" />,
+        onSelect: () => setBlameReq({ target: e.path }),
       });
     }
 
@@ -837,6 +850,7 @@ function Changes({ wc }: { wc: WorkingCopy }) {
       />
 
       <ContextMenu menu={ctx.menu} onClose={ctx.close} />
+      <BlameModal req={blameReq} onClose={() => setBlameReq(null)} />
     </div>
   );
 }

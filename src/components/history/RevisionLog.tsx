@@ -5,9 +5,10 @@
  */
 
 import { useCallback, useEffect, useState } from "react";
-import { Copy, FileDiff, Folder, History, Pencil, ServerCrash, Undo2 } from "lucide-react";
+import { Copy, FileDiff, Folder, History, Pencil, ServerCrash, Undo2, Users } from "lucide-react";
 
 import * as api from "@/lib/api";
+import { BlameModal, type BlameRequest } from "@/components/blame/BlameModal";
 import { DiffViewer } from "@/components/diff/DiffViewer";
 import type { ContentRef } from "@/components/diff/FileBlock";
 import { Avatar } from "@/components/ui/Avatar";
@@ -130,6 +131,7 @@ export function RevisionDetail({
   const [diff, setDiff] = useState("");
   const [loading, setLoading] = useState(false);
   const [encoding, setEncoding] = useState<string | undefined>();
+  const [blameReq, setBlameReq] = useState<BlameRequest | null>(null);
 
   // Volta para "revisão inteira" ao trocar de revisão.
   useEffect(() => setSel("all"), [entry.revision]);
@@ -219,6 +221,19 @@ export function RevisionDetail({
               </div>
             </div>
             <div className="-mr-1.5 flex shrink-0 items-center gap-0.5">
+              {selectedPath && selectedPath.kind !== "dir" && selectedPath.action !== "D" && (
+                <IconButton
+                  label="Autoria do arquivo selecionado nesta revisão (blame)"
+                  onClick={() =>
+                    setBlameReq({
+                      target: `${target.repoRoot}${selectedPath.path}`,
+                      revision: entry.revision,
+                    })
+                  }
+                >
+                  <Users className="size-4" />
+                </IconButton>
+              )}
               {actions?.onRevert && (
                 <IconButton
                   label="Reverter as alterações desta revisão"
@@ -314,6 +329,8 @@ export function RevisionDetail({
           <DiffViewer text={diff} onExpandContext={expandFor} />
         )}
       </div>
+
+      <BlameModal req={blameReq} onClose={() => setBlameReq(null)} />
     </div>
   );
 }
