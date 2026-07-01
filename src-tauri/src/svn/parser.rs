@@ -391,7 +391,18 @@ pub fn parse_blame(xml: &str, content: &str) -> Result<Vec<BlameLine>, String> {
 /// Espelha o mapeamento de erros do `fluxo_svn.sh` (`mostrar_erro_svn`).
 pub fn hint_from_stderr(stderr: &str) -> Option<String> {
     let s = stderr;
-    if s.contains("E155004") {
+    // Antes das dicas genéricas de conexão: se o túnel falhou citando o sshpass,
+    // o problema é o binário ausente — sem esta dica o erro fica críptico
+    // (no modo Auto o app cai para ssh puro em silêncio; ver conn.rs).
+    if s.contains("sshpass")
+        && (s.contains("E170012") || s.contains("E170013") || s.contains("No such file"))
+    {
+        Some(
+            "O sshpass não está instalado — instale-o (ex.: sudo apt install sshpass) \
+             ou troque para autenticação por chave SSH em Configurações."
+                .into(),
+        )
+    } else if s.contains("E155004") {
         Some("Working copy travada — rode \"Limpar (cleanup)\" para destravar.".into())
     } else if s.contains("E170013")
         || s.contains("E210002")
