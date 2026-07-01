@@ -1789,11 +1789,52 @@ pub async fn test_connection(
     run(&["info", "--non-interactive", "--", &url], None, mode).await
 }
 
+/// Remove do ambiente do processo-filho as variáveis injetadas pelo runtime do
+/// AppImage. Empacotado como AppImage, o `AppRun` do Subversa exporta
+/// `PYTHONHOME`, `PYTHONPATH`, `LD_LIBRARY_PATH`, `GSETTINGS_SCHEMA_DIR`,
+/// `GTK_PATH`, `XDG_DATA_DIRS` etc. apontando para dentro do pacote montado
+/// (`$APPDIR`, ex.: `/tmp/.mount_XXXX`). Esses valores são herdados por qualquer
+/// programa externo que abrimos (meld, editor, xdg-open) e QUEBRAM esses
+/// programas do sistema — o Python do meld, por exemplo, procura a stdlib dentro
+/// do AppImage e morre com erro fatal ANTES de abrir a janela.
+///
+/// Só age quando `APPDIR` está definido (rodando como AppImage); fora dele o
+/// ambiente fica intacto. Para cada variável, descartamos os componentes
+/// (separados por `:`) que ficam sob `$APPDIR`; se não sobrar nada, a variável é
+/// removida. Assim `PYTHONHOME=/tmp/.mount…/usr` some por completo, enquanto
+/// `XDG_DATA_DIRS=/tmp/.mount…/usr/share:/usr/share` mantém só `/usr/share`.
+fn strip_appimage_env(cmd: &mut std::process::Command) {
+    let appdir = match std::env::var("APPDIR") {
+        Ok(d) if !d.is_empty() => d,
+        _ => return,
+    };
+    let appdir = appdir.trim_end_matches('/');
+    let prefix = format!("{appdir}/");
+    let under_appdir = |c: &str| c == appdir || c.starts_with(&prefix);
+    // vars_os() em vez de vars() para não entrar em pânico com env não-UTF-8;
+    // chaves/valores não-UTF-8 são deixados como estão (herdados).
+    for (key, value) in std::env::vars_os() {
+        let (Some(_), Some(v)) = (key.to_str(), value.to_str()) else {
+            continue;
+        };
+        if !v.split(':').any(under_appdir) {
+            continue; // nada aponta para o AppImage — preserva intacto.
+        }
+        let kept: Vec<&str> = v.split(':').filter(|c| !under_appdir(c)).collect();
+        if kept.iter().all(|c| c.is_empty()) {
+            cmd.env_remove(&key);
+        } else {
+            cmd.env(&key, kept.join(":"));
+        }
+    }
+}
+
 /// Dispara um processo de GUI externo sem bloquear nem deixar zumbis: silencia
 /// os descritores padrão, coloca o filho em seu próprio grupo de processo (para
 /// não receber sinais do app) e o reapeia numa thread dedicada (caso contrário
 /// o processo terminado viraria `<defunct>` até o app fechar).
 fn spawn_detached(mut cmd: std::process::Command) -> std::io::Result<()> {
+    strip_appimage_env(&mut cmd);
     cmd.stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null());
