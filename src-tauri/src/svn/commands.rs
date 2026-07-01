@@ -248,6 +248,27 @@ fn validate_non_empty_message(message: &str) -> Result<(), String> {
     }
 }
 
+/// O `svn` interpreta `alvo@resto` como revisão-peg quando o `@` aparece no
+/// ÚLTIMO segmento do caminho (a varredura para na primeira `/` vinda do fim).
+/// Para alvos literais com `@` (ex.: `notas@v2.txt`), a saída canônica do
+/// próprio Subversion é anexar um `@` final ("peg vazio"). `@` fora do último
+/// segmento (ex.: `usuario@host` na autoridade da URL) não é peg — fica como
+/// está. Atenção: NÃO é idempotente (aplicar duas vezes produziria `@@`) —
+/// aplique exatamente UMA vez, na montagem dos args, depois da validação.
+pub(crate) fn peg_safe(target: &str) -> String {
+    let last = target.rsplit('/').next().unwrap_or(target);
+    if last.contains('@') {
+        format!("{target}@")
+    } else {
+        target.to_string()
+    }
+}
+
+/// [`peg_safe`] aplicado a uma lista de alvos (commit/add/revert/remove).
+fn peg_safe_all(paths: Vec<String>) -> Vec<String> {
+    paths.into_iter().map(|p| peg_safe(&p)).collect()
+}
+
 fn validate_resolve_accept(accept: &str) -> Result<(), String> {
     match accept {
         "working" | "mine-full" | "theirs-full" | "base" | "mine-conflict" | "theirs-conflict" => {
@@ -265,7 +286,8 @@ async fn build_working_copy(
 ) -> Result<WorkingCopy, String> {
     let path_str = path.to_string_lossy().to_string();
 
-    let info_xml = run_checked(&["info", "--xml", "--", &path_str], None, mode).await?;
+    let target = peg_safe(&path_str);
+    let info_xml = run_checked(&["info", "--xml", "--", &target], None, mode).await?;
     let info = parser::parse_info(&info_xml)?;
     let entry = info
         .entries
@@ -296,7 +318,7 @@ async fn build_working_copy(
     };
 
     // status local para contar modificações e detectar conflitos
-    let status_xml = run(&["status", "--xml", "--", &path_str], None, mode)
+    let status_xml = run(&["status", "--xml", "--", &target], None, mode)
         .await
         .map(|o| o.stdout)
         .unwrap_or_default();
@@ -394,12 +416,13 @@ pub async fn get_status(
     state: State<'_, AppState>,
 ) -> Result<StatusResult, String> {
     let mode = mode_of(&state);
+    let target = peg_safe(&path);
     let mut args = vec!["status", "--xml", "--non-interactive"];
     if remote {
         args.push("-u");
     }
     args.push("--");
-    args.push(&path);
+    args.push(&target);
     let out = run(&args, None, mode).await?;
     if !out.success {
         let mut msg = out.stderr.trim().to_string();
@@ -424,8 +447,8 @@ pub async fn get_diff(
     let mode = mode_of(&state);
     let mut args: Vec<String> = vec!["diff".into(), "--internal-diff".into(), "--".into()];
     match files {
-        Some(fs) if !fs.is_empty() => args.extend(fs),
-        _ => args.push(path),
+        Some(fs) if !fs.is_empty() => args.extend(peg_safe_all(fs)),
+        _ => args.push(peg_safe(&path)),
     }
     let refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
     // Bytes crus + decodificação por arquivo: preserva o conteúdo latino-1 no diff
@@ -454,6 +477,7 @@ pub async fn diff_revision(
         validate_remote_url_for_read(&target, &cfg)?;
     }
     let change = format!("-c{}", revision.trim());
+    let target = peg_safe(&target);
     let args: Vec<&str> = vec![
         "diff",
         "--internal-diff",
@@ -500,7 +524,7 @@ pub async fn get_log(
         args.push(term);
     }
     args.push("--".into());
-    args.push(target);
+    args.push(peg_safe(&target));
     let refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
     let xml = run_checked_limited(&refs, None, mode, LIMIT_DEFAULT).await?;
     parser::parse_log(&xml)
@@ -508,13 +532,14 @@ pub async fn get_log(
 
 /// Lê a revisão de `svn info` (BASE por padrão, ou na revisão `rev`).
 async fn info_revision(path: &str, rev: Option<&str>, mode: SshMode) -> Result<String, String> {
+    let target = peg_safe(path);
     let mut args: Vec<&str> = vec!["info", "--xml", "--non-interactive"];
     if let Some(r) = rev {
         args.push("-r");
         args.push(r);
     }
     args.push("--");
-    args.push(path);
+    args.push(&target);
     let xml = run_checked(&args, None, mode).await?;
     parser::parse_info(&xml)?
         .entries
@@ -526,8 +551,9 @@ async fn info_revision(path: &str, rev: Option<&str>, mode: SshMode) -> Result<S
 
 /// Lê a URL atual de uma working copy (`svn info`).
 async fn info_url(path: &str, mode: SshMode) -> Result<String, String> {
+    let target = peg_safe(path);
     let xml = run_checked(
-        &["info", "--xml", "--non-interactive", "--", path],
+        &["info", "--xml", "--non-interactive", "--", &target],
         None,
         mode,
     )
@@ -556,6 +582,7 @@ pub async fn incoming(
 
     let limit_s = limit.unwrap_or(200).to_string();
     let range = format!("HEAD:{base}");
+    let target = peg_safe(&path);
     let xml = run_checked_limited(
         &[
             "log",
@@ -567,7 +594,7 @@ pub async fn incoming(
             &range,
             "--non-interactive",
             "--",
-            &path,
+            &target,
         ],
         None,
         mode,
@@ -590,8 +617,9 @@ pub async fn incoming(
 pub async fn list_dir(url: String, state: State<'_, AppState>) -> Result<Vec<ListEntry>, String> {
     let (mode, cfg) = config_snapshot(&state);
     validate_remote_url_for_read(&url, &cfg)?;
+    let target = peg_safe(&url);
     let xml = run_checked_limited(
-        &["list", "--xml", "--non-interactive", "--", &url],
+        &["list", "--xml", "--non-interactive", "--", &target],
         None,
         mode,
         LIMIT_DEFAULT,
@@ -609,8 +637,9 @@ pub async fn list_dir(url: String, state: State<'_, AppState>) -> Result<Vec<Lis
 pub async fn list_tree(url: String, state: State<'_, AppState>) -> Result<Vec<ListEntry>, String> {
     let (mode, cfg) = config_snapshot(&state);
     validate_remote_url_for_read(&url, &cfg)?;
+    let target = peg_safe(&url);
     let xml = run_checked_limited(
-        &["list", "-R", "--xml", "--non-interactive", "--", &url],
+        &["list", "-R", "--xml", "--non-interactive", "--", &target],
         None,
         mode,
         LIMIT_DEFAULT,
@@ -672,8 +701,16 @@ pub async fn search_content(
     }
 
     // Enumera a subárvore uma vez (mesmo `svn list -R` da expansão).
+    let base_target = peg_safe(&base_url);
     let xml = run_checked_limited(
-        &["list", "-R", "--xml", "--non-interactive", "--", &base_url],
+        &[
+            "list",
+            "-R",
+            "--xml",
+            "--non-interactive",
+            "--",
+            &base_target,
+        ],
         None,
         mode,
         LIMIT_DEFAULT,
@@ -709,7 +746,7 @@ pub async fn search_content(
             break;
         }
 
-        let file_url = format!("{base_url}/{}", e.name);
+        let file_url = peg_safe(&format!("{base_url}/{}", e.name));
         let text = match run_checked_limited(
             &["cat", "--non-interactive", "--", &file_url],
             None,
@@ -785,7 +822,7 @@ pub async fn cat_file(
         args.push(r);
     }
     args.push("--".into());
-    args.push(target);
+    args.push(peg_safe(&target));
     let refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
     // Bytes crus + decode: o conteúdo (revelar contexto, prévia) preserva latino-1.
     let bytes = run_raw_checked_limited(&refs, None, mode, LIMIT_CAT_FILE).await?;
@@ -797,6 +834,7 @@ pub async fn cat_file(
 pub async fn blame(target: String, state: State<'_, AppState>) -> Result<Vec<BlameLine>, String> {
     let (mode, cfg) = config_snapshot(&state);
     validate_remote_url_for_read(&target, &cfg)?;
+    let target = peg_safe(&target);
     let xml = run_checked_limited(
         &["blame", "--xml", "--non-interactive", "--", &target],
         None,
@@ -821,8 +859,9 @@ pub async fn blame(target: String, state: State<'_, AppState>) -> Result<Vec<Bla
 pub async fn get_url_info(url: String, state: State<'_, AppState>) -> Result<UrlInfo, String> {
     let mode = mode_of(&state);
     parse_svn_url(&url, "URL SVN")?;
+    let target = peg_safe(&url);
     let xml = run_checked_limited(
-        &["info", "--xml", "--non-interactive", "--", &url],
+        &["info", "--xml", "--non-interactive", "--", &target],
         None,
         mode,
         LIMIT_DEFAULT,
@@ -853,6 +892,9 @@ pub async fn get_url_info(url: String, state: State<'_, AppState>) -> Result<Url
 /// Diff entre duas URLs (Comparar com…). Usa `--old/--new` (forma canônica);
 /// cada uma aceita `URL@REV`. Não usa `--` porque as flags consomem o próximo
 /// argumento. Espaços/realce são tratados no frontend.
+///
+/// NÃO aplicar [`peg_safe`] aqui: o `@REV` destas URLs é peg-revision
+/// INTENCIONAL (o usuário digita `URL@REV` no diálogo de comparação).
 #[tauri::command]
 pub async fn diff_urls(
     old_url: String,
@@ -1013,6 +1055,8 @@ pub async fn checkout(
     validate_remote_url_for_read(&url, &cfg)?;
     let dest = validate_local_path(&dest, &cfg, "destino do checkout", true, false)?;
     let dest = dest.to_string_lossy().to_string();
+    let url = peg_safe(&url);
+    let dest = peg_safe(&dest);
     run_streaming_op(
         &app,
         "checkout",
@@ -1030,6 +1074,7 @@ pub async fn update(
     state: State<'_, AppState>,
 ) -> Result<CommandOutput, String> {
     let mode = mode_of(&state);
+    let path = peg_safe(&path);
     run_streaming_op(
         &app,
         "update",
@@ -1065,7 +1110,7 @@ pub async fn commit(
         message,
     ];
     args.push("--".into());
-    args.extend(paths);
+    args.extend(peg_safe_all(paths));
     let refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
     run(&refs, None, mode).await
 }
@@ -1081,7 +1126,7 @@ pub async fn svn_add(
     let mode = mode_of(&state);
     let mut args: Vec<String> = vec!["add".into(), "--parents".into(), "--non-interactive".into()];
     args.push("--".into());
-    args.extend(paths);
+    args.extend(peg_safe_all(paths));
     let refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
     run(&refs, None, mode).await
 }
@@ -1101,7 +1146,7 @@ pub async fn revert(
         args.push("-R".into());
     }
     args.push("--".into());
-    args.extend(paths);
+    args.extend(peg_safe_all(paths));
     let refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
     run(&refs, None, mode).await
 }
@@ -1171,8 +1216,9 @@ pub async fn revert_hunk(
 
     // Diff bruto do arquivo (bytes): preserva a codificação original, então o
     // corpo do patch tem exatamente os bytes que o `svn patch` vai conferir.
+    let tgt_arg = peg_safe(&tgt_s);
     let diff = run_raw_checked_limited(
-        &["diff", "--internal-diff", "--", &tgt_s],
+        &["diff", "--internal-diff", "--", &tgt_arg],
         None,
         mode,
         LIMIT_DEFAULT,
@@ -1205,7 +1251,9 @@ pub async fn revert_hunk(
     std::fs::write(&tmp, &block.patch)
         .map_err(|e| format!("não consegui preparar o trecho: {e}"))?;
     let tmp_s = tmp.to_string_lossy().to_string();
-    let wc_s = wc.to_string_lossy().to_string();
+    // O arquivo de patch (tmp, nome nosso) não é alvo versionado — sem peg;
+    // já o caminho da WC é alvo e leva o escape.
+    let wc_s = peg_safe(&wc.to_string_lossy());
 
     let out = run(
         &["patch", "--reverse-diff", "--", &tmp_s, &wc_s],
@@ -1256,7 +1304,7 @@ pub async fn remove(
         args.push("--force".into());
     }
     args.push("--".into());
-    args.extend(paths);
+    args.extend(peg_safe_all(paths));
     let refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
     run(&refs, None, mode).await
 }
@@ -1272,6 +1320,8 @@ pub async fn create_branch(
     validate_non_empty_message(&message)?;
     validate_remote_url_for_read(&source_url, &cfg)?;
     validate_remote_url_for_write(&branch_url, &cfg)?;
+    let source_url = peg_safe(&source_url);
+    let branch_url = peg_safe(&branch_url);
     run_limited(
         &[
             "copy",
@@ -1300,6 +1350,8 @@ pub async fn switch_wc(
     let (mode, cfg) = config_snapshot(&state);
     validate_remote_url_for_read(&url, &cfg)?;
     validate_local_path(&path, &cfg, "working copy", true, false)?;
+    let url = peg_safe(&url);
+    let path = peg_safe(&path);
     run_streaming_op(
         &app,
         "switch",
@@ -1343,8 +1395,8 @@ pub async fn merge(
         args.push("--record-only".into());
     }
     args.push("--".into());
-    args.push(source_url);
-    args.push(path);
+    args.push(peg_safe(&source_url));
+    args.push(peg_safe(&path));
     let refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
     run_streaming_op(&app, "merge", &refs, None, mode).await
 }
@@ -1371,6 +1423,8 @@ pub async fn reverse_merge(
     // -r N:N-1 desfaz exatamente a revisão N — dois números positivos, sem a
     // ambiguidade de parsing de `-c -N`.
     let range = format!("{}:{}", n, n - 1);
+    let url = peg_safe(&url);
+    let path = peg_safe(&path);
     run_streaming_op(
         &app,
         "merge",
@@ -1420,6 +1474,7 @@ pub async fn set_revprop_message(
         .map_err(|e| format!("não consegui preparar a mensagem: {e}"))?;
     let tmp_s = tmp.to_string_lossy().to_string();
     let rev_s = n.to_string();
+    let path = peg_safe(&path);
 
     let out = run(
         &[
@@ -1450,7 +1505,8 @@ pub async fn resolve(
 ) -> Result<CommandOutput, String> {
     let mode = mode_of(&state);
     validate_resolve_accept(&accept)?;
-    run(&["resolve", "--accept", &accept, "--", &path], None, mode).await
+    let target = peg_safe(&path);
+    run(&["resolve", "--accept", &accept, "--", &target], None, mode).await
 }
 
 // ---------------------------------------------------------------------------
@@ -1514,7 +1570,8 @@ pub async fn conflict_details(
     let abs = validate_local_path(&path, &cfg, "arquivo", false, false)?;
     let abs_str = abs.to_string_lossy().to_string();
 
-    let info_xml = run_checked(&["info", "--xml", "--", &abs_str], None, mode).await?;
+    let target = peg_safe(&abs_str);
+    let info_xml = run_checked(&["info", "--xml", "--", &target], None, mode).await?;
     let info = parser::parse_info(&info_xml)?;
     let entry = info
         .entries
@@ -1611,9 +1668,9 @@ pub async fn resolve_with_content(
     let (mode, cfg) = config_snapshot(&state);
     let abs = validate_local_path(&path, &cfg, "arquivo", false, false)?;
     write_atomic(&abs, content.as_bytes())?;
-    let abs_str = abs.to_string_lossy().to_string();
+    let target = peg_safe(&abs.to_string_lossy());
     run(
-        &["resolve", "--accept", "working", "--", &abs_str],
+        &["resolve", "--accept", "working", "--", &target],
         None,
         mode,
     )
@@ -1623,7 +1680,8 @@ pub async fn resolve_with_content(
 #[tauri::command]
 pub async fn cleanup(path: String, state: State<'_, AppState>) -> Result<CommandOutput, String> {
     let mode = mode_of(&state);
-    run(&["cleanup", "--", &path], None, mode).await
+    let target = peg_safe(&path);
+    run(&["cleanup", "--", &target], None, mode).await
 }
 
 #[tauri::command]
@@ -1635,6 +1693,7 @@ pub async fn delete_remote(
     let (mode, cfg) = config_snapshot(&state);
     validate_non_empty_message(&message)?;
     validate_remote_url_for_write(&url, &cfg)?;
+    let url = peg_safe(&url);
     run_limited(
         &["delete", "--non-interactive", "-m", &message, "--", &url],
         None,
@@ -1669,8 +1728,8 @@ pub async fn export_path(
         args.push(r);
     }
     args.push("--".into());
-    args.push(url);
-    args.push(dest);
+    args.push(peg_safe(&url));
+    args.push(peg_safe(&dest));
     let refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
     run_streaming_op(&app, "export", &refs, None, mode).await
 }
@@ -1687,7 +1746,8 @@ pub async fn import_path(
     validate_non_empty_message(&message)?;
     let local_path = validate_local_path(&local_path, &cfg, "pasta local a importar", false, true)?;
     validate_remote_url_for_write(&url, &cfg)?;
-    let local_path = local_path.to_string_lossy().to_string();
+    let local_path = peg_safe(&local_path.to_string_lossy());
+    let url = peg_safe(&url);
     run_limited(
         &[
             "import",
@@ -1715,6 +1775,7 @@ pub async fn make_dir(
     let (mode, cfg) = config_snapshot(&state);
     validate_non_empty_message(&message)?;
     validate_remote_url_for_write(&url, &cfg)?;
+    let url = peg_safe(&url);
     run_limited(
         &[
             "mkdir",
@@ -1745,6 +1806,8 @@ pub async fn move_remote(
     validate_non_empty_message(&message)?;
     validate_remote_url_for_write(&src_url, &cfg)?;
     validate_remote_url_for_write(&dst_url, &cfg)?;
+    let src_url = peg_safe(&src_url);
+    let dst_url = peg_safe(&dst_url);
     run_limited(
         &[
             "move",
@@ -1833,7 +1896,8 @@ pub async fn test_connection(
 ) -> Result<CommandOutput, String> {
     let mode = mode_of(&state);
     parse_svn_url(&url, "URL SVN")?;
-    run(&["info", "--non-interactive", "--", &url], None, mode).await
+    let target = peg_safe(&url);
+    run(&["info", "--non-interactive", "--", &target], None, mode).await
 }
 
 /// Remove do ambiente do processo-filho as variáveis injetadas pelo runtime do
@@ -2195,7 +2259,7 @@ pub async fn detect_encoding_url(
         args.push(r);
     }
     args.push("--".into());
-    args.push(url);
+    args.push(peg_safe(&url));
     let refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
     let Ok(bytes) = run_raw_checked_limited(&refs, None, mode, LIMIT_CAT_FILE).await else {
         return Ok("unknown".into());
@@ -2304,6 +2368,29 @@ mod tests {
             }],
             ..AppConfig::default()
         }
+    }
+
+    #[test]
+    fn peg_safe_escapa_somente_o_que_precisa() {
+        // Sem `@`: intocado.
+        assert_eq!(peg_safe("/wc/src/app.ts"), "/wc/src/app.ts");
+        // `@` no último segmento (caminho local ou URL): ganha o peg vazio.
+        assert_eq!(peg_safe("notas@v2.txt"), "notas@v2.txt@");
+        assert_eq!(peg_safe("/wc/notas@v2.txt"), "/wc/notas@v2.txt@");
+        assert_eq!(
+            peg_safe("svn+ssh://user@host/repo/branches/issue@retrabalho"),
+            "svn+ssh://user@host/repo/branches/issue@retrabalho@"
+        );
+        // `@` só na autoridade da URL (usuario@host) ou em segmento intermediário:
+        // não é peg, fica como está.
+        assert_eq!(
+            peg_safe("svn+ssh://user@host/repo/trunk"),
+            "svn+ssh://user@host/repo/trunk"
+        );
+        assert_eq!(peg_safe("pasta@x/arquivo.txt"), "pasta@x/arquivo.txt");
+        // Nome terminando em `@` ganha um SEGUNDO `@` — é o escape correto
+        // (por isso a função não pode ser idempotente).
+        assert_eq!(peg_safe("arquivo@"), "arquivo@@");
     }
 
     #[test]

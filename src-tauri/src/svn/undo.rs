@@ -15,7 +15,7 @@ use std::path::{Path, PathBuf};
 
 use tauri::State;
 
-use super::commands::{config_snapshot, next_op_id, validate_local_path};
+use super::commands::{config_snapshot, next_op_id, peg_safe, validate_local_path};
 use super::parser;
 use super::runner::run;
 use super::types::{CommandOutput, StashResult};
@@ -78,8 +78,9 @@ pub fn clear_disk() {
 /// em estado normal não aparecem na saída — o chamador assume um padrão. Em caso
 /// de falha, devolve vazio (o chamador cai no padrão para todos).
 async fn status_of(paths: &[String], mode: super::types::SshMode) -> Vec<(String, String)> {
+    let targets: Vec<String> = paths.iter().map(|p| peg_safe(p)).collect();
     let mut args: Vec<&str> = vec!["status", "--xml", "--"];
-    args.extend(paths.iter().map(|s| s.as_str()));
+    args.extend(targets.iter().map(|s| s.as_str()));
     let xml = match run(&args, None, mode).await {
         Ok(out) if out.success => out.stdout,
         _ => return Vec::new(),
@@ -232,8 +233,9 @@ pub async fn undo_revert(id: u64, state: State<'_, AppState>) -> Result<CommandO
     }
 
     if !to_add.is_empty() {
+        let targets: Vec<String> = to_add.iter().map(|p| peg_safe(p)).collect();
         let mut args: Vec<&str> = vec!["add", "--force", "--parents", "--"];
-        args.extend(to_add.iter().map(|s| s.as_str()));
+        args.extend(targets.iter().map(|s| s.as_str()));
         if let Ok(out) = run(&args, None, mode).await {
             if !out.success {
                 warnings.push(out.stderr.trim().to_string());
@@ -243,8 +245,9 @@ pub async fn undo_revert(id: u64, state: State<'_, AppState>) -> Result<CommandO
         }
     }
     if !to_delete.is_empty() {
+        let targets: Vec<String> = to_delete.iter().map(|p| peg_safe(p)).collect();
         let mut args: Vec<&str> = vec!["delete", "--force", "--"];
-        args.extend(to_delete.iter().map(|s| s.as_str()));
+        args.extend(targets.iter().map(|s| s.as_str()));
         if let Ok(out) = run(&args, None, mode).await {
             if !out.success {
                 warnings.push(out.stderr.trim().to_string());
