@@ -41,6 +41,7 @@ function Browser({ wc }: { wc: WorkingCopy }) {
   const [entries, setEntries] = useState<ListEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
   const { switchTo } = useActions();
   const setCreateBranch = useUiStore((s) => s.setCreateBranch);
   const refresh = useWorkspaceStore((s) => s.refresh);
@@ -81,6 +82,18 @@ function Browser({ wc }: { wc: WorkingCopy }) {
   const goTo = (idx: number) => {
     const path = crumbs.slice(0, idx + 1).join("/");
     setUrl(`${repoRoot}/${path}`);
+  };
+
+  // Uma operação de servidor por vez: sem isso, um duplo clique dispararia
+  // switch/apagar duas vezes (a trava cobre inclusive o tempo do confirm).
+  const guardado = async (fn: () => Promise<unknown>) => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      await fn();
+    } finally {
+      setBusy(false);
+    }
   };
 
   const deleteBranch = async (entry: ListEntry) => {
@@ -135,9 +148,12 @@ function Browser({ wc }: { wc: WorkingCopy }) {
             <Button
               variant="outline"
               size="sm"
-              onClick={async () => {
-                if (await switchTo(wc, mainlineUrl, "trunk")) refresh();
-              }}
+              disabled={busy}
+              onClick={() =>
+                guardado(async () => {
+                  if (await switchTo(wc, mainlineUrl, "trunk")) refresh();
+                })
+              }
             >
               <TreePine className="size-3.5" />
               Voltar ao trunk
@@ -236,16 +252,20 @@ function Browser({ wc }: { wc: WorkingCopy }) {
                   <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
                     <Tooltip label="Apontar minha WC para cá (switch)">
                       <button
-                        onClick={() => switchTo(wc, childUrl, decodeUrlSafe(childUrl.slice(repoRoot.length)))}
-                        className="flex size-7 items-center justify-center rounded text-faint hover:bg-panel-3 hover:text-brand"
+                        onClick={() =>
+                          guardado(() => switchTo(wc, childUrl, decodeUrlSafe(childUrl.slice(repoRoot.length))))
+                        }
+                        disabled={busy}
+                        className="flex size-7 items-center justify-center rounded text-faint hover:bg-panel-3 hover:text-brand disabled:opacity-50"
                       >
                         <ArrowRightLeft className="size-3.5" />
                       </button>
                     </Tooltip>
                     <Tooltip label="Apagar do servidor">
                       <button
-                        onClick={() => deleteBranch(e)}
-                        className="flex size-7 items-center justify-center rounded text-faint hover:bg-conflict/15 hover:text-conflict"
+                        onClick={() => guardado(() => deleteBranch(e))}
+                        disabled={busy}
+                        className="flex size-7 items-center justify-center rounded text-faint hover:bg-conflict/15 hover:text-conflict disabled:opacity-50"
                       >
                         <Trash2 className="size-3.5" />
                       </button>
