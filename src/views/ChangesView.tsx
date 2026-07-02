@@ -11,6 +11,7 @@ import {
   Folder,
   FolderOpen,
   GitMerge,
+  ListX,
   Loader2,
   Pencil,
   RefreshCw,
@@ -863,32 +864,43 @@ function Changes({ wc }: { wc: WorkingCopy }) {
             }}
           />
           <div className="mt-2 flex items-center justify-between gap-2">
-            <div className="flex items-center gap-3">
-              <button
-                onClick={() => revertPaths(selectedEntries.filter((e) => e.item !== "unversioned").map((e) => e.path))}
-                disabled={!selectedEntries.some((e) => e.item !== "unversioned")}
-                className="text-[12px] text-faint transition-colors hover:text-danger disabled:opacity-40"
-              >
-                Reverter selecionados
-              </button>
-              <button
-                onClick={revertEverything}
-                disabled={!hasRevertable}
-                className="text-[12px] text-faint transition-colors hover:text-danger disabled:opacity-40"
-              >
-                Reverter tudo
-              </button>
-              <button
-                onClick={() => {
-                  setShelfName("");
-                  setShelfOpen(true);
-                }}
-                disabled={!selectedEntries.length || committing}
-                title="Tira as mudanças marcadas da working copy e as guarda com um nome, para aplicar de volta depois"
-                className="text-[12px] text-faint transition-colors hover:text-ink disabled:opacity-40"
-              >
-                Guardar para depois
-              </button>
+            <div className="flex items-center gap-1">
+              <Tooltip label="Reverter selecionados">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => revertPaths(selectedEntries.filter((e) => e.item !== "unversioned").map((e) => e.path))}
+                  disabled={!selectedEntries.some((e) => e.item !== "unversioned")}
+                  className="text-faint hover:bg-danger/10 hover:text-danger"
+                >
+                  <RotateCcw className="size-4" />
+                </Button>
+              </Tooltip>
+              <Tooltip label="Reverter tudo">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={revertEverything}
+                  disabled={!hasRevertable}
+                  className="text-faint hover:bg-danger/10 hover:text-danger"
+                >
+                  <ListX className="size-4" />
+                </Button>
+              </Tooltip>
+              <Tooltip label="Guardar para depois">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => {
+                    setShelfName("");
+                    setShelfOpen(true);
+                  }}
+                  disabled={!selectedEntries.length || committing}
+                  className="text-faint hover:text-ink"
+                >
+                  <Archive className="size-4" />
+                </Button>
+              </Tooltip>
             </div>
             <Button variant="primary" onClick={doCommit} loading={committing} disabled={!selectedEntries.length}>
               {!committing && <Upload className="size-4" />}
