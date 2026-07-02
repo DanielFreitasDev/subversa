@@ -15,6 +15,7 @@ import {
 
 import * as api from "@/lib/api";
 import { Button } from "@/components/ui/Button";
+import { ContextMenu, useContextMenu, type MenuItem } from "@/components/ui/ContextMenu";
 import { Empty } from "@/components/ui/Empty";
 import { HelpPopover } from "@/components/ui/HelpPopover";
 import { Loading } from "@/components/ui/Spinner";
@@ -45,6 +46,7 @@ function Browser({ wc }: { wc: WorkingCopy }) {
   const { switchTo } = useActions();
   const setCreateBranch = useUiStore((s) => s.setCreateBranch);
   const refresh = useWorkspaceStore((s) => s.refresh);
+  const ctx = useContextMenu();
 
   const reqRef = useRef(0);
   const load = useCallback(
@@ -120,6 +122,37 @@ function Browser({ wc }: { wc: WorkingCopy }) {
     if (out && reportOutput(out, "Apagado", extractRevision(out.stdout) ? `r${extractRevision(out.stdout)}` : undefined)) {
       load(url);
     }
+  };
+
+  // Mesmas ações dos ícones de hover, agora também via botão direito na pasta.
+  const itemsFor = (entry: ListEntry): MenuItem[] => {
+    if (entry.kind !== "dir") return [];
+    const childUrl = `${url}/${entry.name}`;
+    return [
+      {
+        id: "open",
+        label: "Abrir",
+        icon: <Folder className="size-3.5" />,
+        onSelect: () => setUrl(childUrl),
+      },
+      {
+        id: "switch",
+        label: "Apontar minha WC para cá (switch)",
+        icon: <ArrowRightLeft className="size-3.5" />,
+        disabled: busy,
+        onSelect: () =>
+          guardado(() => switchTo(wc, childUrl, decodeUrlSafe(childUrl.slice(repoRoot.length)))),
+      },
+      {
+        id: "delete",
+        label: "Apagar do servidor",
+        icon: <Trash2 className="size-3.5" />,
+        danger: true,
+        separatorBefore: true,
+        disabled: busy,
+        onSelect: () => guardado(() => deleteBranch(entry)),
+      },
+    ];
   };
 
   return (
@@ -225,6 +258,7 @@ function Browser({ wc }: { wc: WorkingCopy }) {
             return (
               <div
                 key={e.name}
+                onContextMenu={(ev) => ctx.open(ev, itemsFor(e))}
                 className="group flex items-center gap-2.5 rounded-md px-2.5 py-2 hover:bg-panel-2"
               >
                 <button
@@ -277,6 +311,8 @@ function Browser({ wc }: { wc: WorkingCopy }) {
           })
         )}
       </div>
+
+      <ContextMenu menu={ctx.menu} onClose={ctx.close} />
     </div>
   );
 }
