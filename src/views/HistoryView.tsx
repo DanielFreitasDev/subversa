@@ -28,14 +28,17 @@ function History_({ wc }: { wc: WorkingCopy }) {
     setLoading(true);
     setError(null);
     try {
-      const log = await api.getLog(wc.path, limit, query || undefined);
+      // Loga pela URL (assume HEAD:1) e não pelo caminho da WC (assume BASE:1):
+      // numa WC de revisão mista, a BASE da raiz fica defasada após um commit de
+      // arquivos fundos e esconderia do histórico a revisão recém-commitada.
+      const log = await api.getLog(wc.url, limit, query || undefined);
       setEntries(log);
     } catch (e) {
       setError(String(e));
     } finally {
       setLoading(false);
     }
-  }, [wc.path, limit, query]);
+  }, [wc.url, limit, query]);
 
   useEffect(() => {
     load();

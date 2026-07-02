@@ -432,6 +432,27 @@ pub async fn run_checked_limited(
     }
 }
 
+/// Maior revisão presente na working copy via `svnversion` (binário local, sem
+/// rede/SSH). Devolve a saída bruta (ex.: `"16348"`, `"16346:16348"`, `"16348M"`)
+/// ou `None` se o comando falhar (binário ausente, caminho não versionado…). O
+/// parsing/normalização fica com o chamador. Fica de propósito fora do funil de
+/// auditoria do `svn`: é uma leitura de metadado local, não uma operação de
+/// servidor.
+pub async fn svnversion(path: &str) -> Option<String> {
+    let mut cmd = Command::new("svnversion");
+    cmd.arg(path);
+    cmd.kill_on_drop(true);
+    let out = timeout(Duration::from_secs(60), cmd.output())
+        .await
+        .ok()?
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    (!s.is_empty()).then_some(s)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

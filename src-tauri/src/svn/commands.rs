@@ -16,7 +16,7 @@ use super::cancel;
 use super::parser;
 use super::runner::{
     run, run_checked, run_checked_limited, run_limited, run_raw_checked_limited, run_with_progress,
-    LIMIT_BLAME, LIMIT_CAT_FILE, LIMIT_DEFAULT,
+    svnversion, LIMIT_BLAME, LIMIT_CAT_FILE, LIMIT_DEFAULT,
 };
 use super::types::*;
 use crate::config;
@@ -309,6 +309,13 @@ async fn build_working_copy(
         .map(|s| s.to_string_lossy().to_string())
         .unwrap_or_else(|| path_str.clone());
 
+    // Revisão exibida = maior revisão presente na WC. Após commitar arquivos
+    // fundos, a raiz (`entry.revision`) fica defasada (WC de revisão mista); o
+    // `svnversion` já reflete o commit, casando com o "commit enviado rN".
+    let revision = wc_highest_rev(&path_str, mode)
+        .await
+        .unwrap_or_else(|_| entry.revision.clone());
+
     let (kind, branch_label) = derive_branch(&relative_url);
     let project = match_project(&name, &url, projects);
     let project_key = project.as_ref().map(|p| p.key.clone());
@@ -351,7 +358,7 @@ async fn build_working_copy(
         url,
         relative_url,
         repo_root,
-        revision: entry.revision,
+        revision,
         last_changed_rev: entry.commit.as_ref().map(|c| c.revision.clone()),
         last_changed_author: entry.commit.as_ref().and_then(|c| c.author.clone()),
         last_changed_date: entry.commit.and_then(|c| c.date),
@@ -549,6 +556,34 @@ async fn info_revision(path: &str, rev: Option<&str>, mode: SshMode) -> Result<S
         .ok_or_else(|| "svn info não retornou dados".to_string())
 }
 
+/// Extrai o número mais alto de uma saída do `svnversion` (ex.: `"16346:16348M"`
+/// → `"16348"`). `None` se não houver dígitos (WC não versionada, `"exported"`…).
+fn parse_svnversion_high(s: &str) -> Option<String> {
+    // Numa WC de revisão mista o svnversion imprime `baixa:alta`; sufixos como
+    // M/S/P (modificada/trocada/parcial) vêm grudados no número.
+    let tail = s.rsplit(':').next().unwrap_or(s);
+    let digits: String = tail.chars().take_while(|c| c.is_ascii_digit()).collect();
+    (!digits.is_empty()).then_some(digits)
+}
+
+/// A maior revisão realmente presente na working copy. Diferente de
+/// [`info_revision`] na raiz, isto reflete um commit de arquivos fundos: numa WC
+/// de revisão mista o `svn` só sobe a revisão dos itens commitados, deixando a
+/// raiz na revisão antiga — então `svn info .` fica defasado logo após o commit,
+/// mas o `svnversion` (e o número do "commit enviado rN") já aponta a nova. Se o
+/// `svnversion` falhar, cai no comportamento antigo (revisão da raiz).
+async fn wc_highest_rev(path: &str, mode: SshMode) -> Result<String, String> {
+    if let Some(hi) = svnversion(path)
+        .await
+        .as_deref()
+        .and_then(parse_svnversion_high)
+    {
+        return Ok(hi);
+    }
+    // svnversion indisponível/sem dígitos: comportamento antigo (revisão da raiz).
+    info_revision(path, None, mode).await
+}
+
 /// Lê a URL atual de uma working copy (`svn info`).
 async fn info_url(path: &str, mode: SshMode) -> Result<String, String> {
     let target = peg_safe(path);
@@ -576,7 +611,10 @@ pub async fn incoming(
     state: State<'_, AppState>,
 ) -> Result<IncomingResult, String> {
     let mode = mode_of(&state);
-    let base = info_revision(&path, None, mode).await?;
+    // Base = maior revisão presente na WC (não a da raiz, que fica defasada após
+    // um commit de arquivos fundos — senão a própria revisão recém-commitada
+    // apareceria aqui como "a receber"). Ver [`wc_highest_rev`].
+    let base = wc_highest_rev(&path, mode).await?;
     // HEAD do servidor (melhor esforço: o nó pode ter sido removido no HEAD).
     let head = info_revision(&path, Some("HEAD"), mode).await.ok();
 
@@ -2457,6 +2495,27 @@ mod tests {
             }],
             ..AppConfig::default()
         }
+    }
+
+    #[test]
+    fn svnversion_high_pega_a_maior_revisao() {
+        // WC uniforme: só o número.
+        assert_eq!(parse_svnversion_high("16348").as_deref(), Some("16348"));
+        // Revisão mista `baixa:alta`: fica a alta.
+        assert_eq!(
+            parse_svnversion_high("16346:16348").as_deref(),
+            Some("16348")
+        );
+        // Sufixos de estado (M/S/P) grudados no número são descartados.
+        assert_eq!(parse_svnversion_high("16348M").as_deref(), Some("16348"));
+        assert_eq!(
+            parse_svnversion_high("16346:16348MP").as_deref(),
+            Some("16348")
+        );
+        // Sem dígitos (WC não versionada, exportada, vazia): None → cai no fallback.
+        assert_eq!(parse_svnversion_high("Unversioned directory"), None);
+        assert_eq!(parse_svnversion_high("exported"), None);
+        assert_eq!(parse_svnversion_high(""), None);
     }
 
     #[test]
