@@ -156,6 +156,14 @@ export const conflictDetails = (path: string) =>
 export const resolveWithContent = (path: string, content: string) =>
   invoke<CommandOutput>("resolve_with_content", { path, content });
 
+/**
+ * Abre a ferramenta externa (meld/kdiff3/code) em modo 3 vias sobre o conflito e
+ * ESPERA ela fechar. Se não sobrar marcador de conflito, marca como resolvido.
+ * Resolve `true` (resolvido) ou `false` (fechou, mas ainda há marcadores).
+ */
+export const openMergeTool = (path: string, tool?: string) =>
+  invoke<boolean>("open_merge_tool", { path, tool: tool ?? null });
+
 export const cleanup = (path: string) => invoke<CommandOutput>("cleanup", { path });
 
 export const deleteRemote = (url: string, message: string) =>

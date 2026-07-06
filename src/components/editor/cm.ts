@@ -37,21 +37,37 @@ export function cmLanguageFor(path: string): Extension | null {
   return (loadLanguage(name) as Extension | null) ?? null;
 }
 
-/** Ajustes por cima do tema: fonte mono do app, tamanho e altura cheia. */
-const overlay = EditorView.theme({
+/** Fonte mono do app + entrelinha — comum aos dois modos (cheio e inline). */
+const SCROLLER = {
+  fontFamily: "var(--font-mono, 'JetBrains Mono Variable', ui-monospace, monospace)",
+  lineHeight: "1.55",
+};
+
+/** Modal: ocupa toda a altura do container. */
+const fullHeight = EditorView.theme({
   "&": { height: "100%", fontSize: "12.5px" },
-  ".cm-scroller": {
-    fontFamily: "var(--font-mono, 'JetBrains Mono Variable', ui-monospace, monospace)",
-    lineHeight: "1.55",
-  },
+  ".cm-scroller": SCROLLER,
 });
+
+/** Inline (trecho do editor de conflito): cresce com o conteúdo até `maxHeight`. */
+const autoHeight = (maxHeight: string): Extension =>
+  EditorView.theme({
+    "&": { fontSize: "12.5px" },
+    "&.cm-editor": { maxHeight },
+    ".cm-scroller": { ...SCROLLER, overflow: "auto" },
+  });
 
 /** Tema base do editor (paleta do VSCode) conforme o modo claro/escuro do app. */
 export function cmTheme(isDark: boolean): Extension {
   return isDark ? vscodeDark : vscodeLight;
 }
 
-/** Extensões fixas: fonte/altura e Tab que indenta (como num editor de verdade). */
+/** Extensões do editor de altura cheia (modal): fonte/altura + Tab que indenta. */
 export function cmExtras(): Extension[] {
-  return [overlay, keymap.of([indentWithTab])];
+  return [fullHeight, keymap.of([indentWithTab])];
+}
+
+/** Extensões do editor inline: auto-altura (até `maxHeight`) + Tab que indenta. */
+export function cmInlineExtras(maxHeight = "40vh"): Extension[] {
+  return [autoHeight(maxHeight), keymap.of([indentWithTab])];
 }

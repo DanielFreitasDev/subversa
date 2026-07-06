@@ -5,11 +5,15 @@
  * a lógica de resolução vive no `MergeEditor`.
  */
 
+import { Suspense, lazy } from "react";
 import { ArrowLeftToLine, ArrowRightToLine, Combine, Eraser, Pencil } from "lucide-react";
 
 import type { Span } from "@/components/diff/highlight";
 import type { MergeRegion, RegionKind } from "@/lib/merge3";
 import { cn } from "@/lib/utils";
+
+// Editor inline (CodeMirror) sob demanda — só baixa quando o usuário edita um trecho.
+const CmEditor = lazy(() => import("@/components/editor/CmEditor"));
 
 /** Decisão do usuário para uma região (sobre qual conteúdo vai pro resultado). */
 export type Choice = "left" | "right" | "both" | "base" | "custom";
@@ -118,6 +122,10 @@ function ActionButton({
 
 export interface MergeBlockProps {
   region: MergeRegion;
+  /** Caminho do arquivo (define a linguagem do editor inline). */
+  path: string;
+  /** Tema escuro? (para o editor inline). */
+  isDark: boolean;
   /** Id DOM aplicado à célula central (para rolar até a região). */
   domId?: string;
   /** Linhas de cada coluna, já fatiadas, com seus spans de sintaxe. */
@@ -141,6 +149,8 @@ export interface MergeBlockProps {
 
 export function MergeBlock({
   region,
+  path,
+  isDark,
   domId,
   leftSpans,
   rightSpans,
@@ -244,15 +254,23 @@ export function MergeBlock({
       >
         {actions}
         {editing ? (
-          <textarea
-            autoFocus
-            value={draft}
-            onChange={(e) => onDraftChange(e.target.value)}
+          <div
+            className="border-y border-brand/40 bg-panel"
             onClick={(e) => e.stopPropagation()}
-            spellCheck={false}
-            className="block w-full resize-y border-0 bg-panel px-3 py-1 font-mono text-[12px] leading-[1.65] text-ink outline-none ring-1 ring-inset ring-brand/30"
-            rows={Math.min(Math.max(draft.split("\n").length, 2), 14)}
-          />
+          >
+            <Suspense
+              fallback={<div className="px-3 py-2 text-[11px] text-faint">Carregando editor…</div>}
+            >
+              <CmEditor
+                value={draft}
+                onChange={onDraftChange}
+                path={path}
+                isDark={isDark}
+                inline
+                maxHeight="40vh"
+              />
+            </Suspense>
+          </div>
         ) : pending ? (
           <div className="px-3 py-2 text-[11.5px] text-conflict">
             Conflito — escolha um lado, junte (Ambos) ou edite.

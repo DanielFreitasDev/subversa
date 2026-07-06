@@ -8,23 +8,30 @@
 import { useMemo } from "react";
 import CodeMirror from "@uiw/react-codemirror";
 
-import { cmExtras, cmLanguageFor, cmTheme } from "./cm";
+import { cmExtras, cmInlineExtras, cmLanguageFor, cmTheme } from "./cm";
 
 export default function CmEditor({
   value,
   onChange,
   path,
   isDark,
+  inline = false,
+  maxHeight = "40vh",
 }: {
   value: string;
   onChange: (v: string) => void;
   path: string;
   isDark: boolean;
+  /** Modo inline (trecho do editor de conflito): auto-altura, não ocupa 100%. */
+  inline?: boolean;
+  /** Altura máxima no modo inline (depois rola). */
+  maxHeight?: string;
 }) {
   const extensions = useMemo(() => {
+    const base = inline ? cmInlineExtras(maxHeight) : cmExtras();
     const lang = cmLanguageFor(path);
-    return lang ? [...cmExtras(), lang] : cmExtras();
-  }, [path]);
+    return lang ? [...base, lang] : base;
+  }, [path, inline, maxHeight]);
 
   return (
     <CodeMirror
@@ -32,9 +39,11 @@ export default function CmEditor({
       onChange={onChange}
       extensions={extensions}
       theme={cmTheme(isDark)}
-      height="100%"
+      height={inline ? undefined : "100%"}
+      minHeight={inline ? "2.4em" : undefined}
       autoFocus
-      className="h-full"
+      className={inline ? undefined : "h-full"}
+      basicSetup={inline ? { foldGutter: false } : undefined}
     />
   );
 }

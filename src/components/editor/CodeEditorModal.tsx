@@ -20,18 +20,12 @@ import { Modal } from "@/components/ui/Modal";
 import { Loading } from "@/components/ui/Spinner";
 import { HELP } from "@/lib/help";
 import { tryRun } from "@/lib/op";
-import { baseName } from "@/lib/utils";
+import { baseName, resolveDark } from "@/lib/utils";
 import { confirm } from "@/store/confirm";
 import { useConfigStore } from "@/store/config";
 import { toast } from "@/store/toast";
 
 const CmEditor = lazy(() => import("./CmEditor"));
-
-/** Resolve o modo efetivo (o tema "system" segue a preferência do SO). */
-function resolveDark(theme: "dark" | "light" | "system"): boolean {
-  if (theme === "system") return !window.matchMedia?.("(prefers-color-scheme: light)").matches;
-  return theme !== "light";
-}
 
 export function CodeEditorModal({
   open,

@@ -5,24 +5,46 @@
  * trecho (escolher um lado, juntar ambos, descartar ou editar na mão). Ao salvar,
  * grava o resultado e marca o conflito como resolvido (`svn resolve`).
  *
+ * Recursos de UX: desfazer/refazer de tudo (Ctrl+Z / Ctrl+Shift+Z), edição inline
+ * com realce de sintaxe (CodeMirror), "Resolver simples" (varinha — junta edições
+ * em palavras diferentes da mesma linha), mesclar numa ferramenta externa 3-vias
+ * (meld) e abrir o arquivo num editor externo. Atalhos: n/p pular conflito, m/s/b
+ * escolher meu/servidor/ambos no trecho ativo.
+ *
  * As três versões vêm de `api.conflictDetails`; a classificação mudança×conflito é
  * feita pelo motor `diff3` (`@/lib/merge3`). Só conflitos de TEXTO abrem aqui;
  * binário/árvore/propriedade caem nas opções rápidas (`onFallback`).
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertTriangle, GitMerge, ListChecks, Save } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  AlertTriangle,
+  ChevronDown,
+  ChevronUp,
+  ExternalLink,
+  GitMerge,
+  ListChecks,
+  Redo2,
+  Save,
+  Sparkles,
+  SquarePen,
+  Undo2,
+} from "lucide-react";
 
 import * as api from "@/lib/api";
 import { tokenizeText, type Span } from "@/components/diff/highlight";
-import { Button } from "@/components/ui/Button";
+import { Button, IconButton } from "@/components/ui/Button";
 import { Loading } from "@/components/ui/Spinner";
 import { Modal } from "@/components/ui/Modal";
 import { HELP } from "@/lib/help";
 import { reportOutput, tryRun } from "@/lib/op";
-import { diff3, detectEol, fromLines, toLines, type MergeRegion } from "@/lib/merge3";
+import { diff3, detectEol, fromLines, magicMerge, toLines, type MergeRegion } from "@/lib/merge3";
 import type { ConflictDetails } from "@/lib/types";
-import { baseName, cn } from "@/lib/utils";
+import { baseName, cn, resolveDark } from "@/lib/utils";
+import { useHistory } from "@/hooks/useHistory";
+import { confirm } from "@/store/confirm";
+import { useConfigStore } from "@/store/config";
+import { toast } from "@/store/toast";
 import { MergeBlock, type Choice } from "./MergeBlock";
 
 /** Resolução de uma região: o lado escolhido (+ texto, quando editado à mão). */
@@ -71,12 +93,33 @@ export function MergeEditor({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [merging, setMerging] = useState(false);
 
-  const [res, setRes] = useState<Record<number, Res>>({});
+  // Decisões por região num histórico (desfazer/refazer). `res` é o presente.
+  const history = useHistory<Record<number, Res>>({});
+  const res = history.present;
+  const { set: setRes, undo, redo, reset: resetHistory, canUndo, canRedo } = history;
+
   const [editing, setEditing] = useState<number | null>(null);
   const [draft, setDraft] = useState("");
   const [active, setActive] = useState<number | null>(null);
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
+
+  const theme = useConfigStore((s) => s.config?.theme ?? "dark");
+  const isDark = useMemo(() => resolveDark(theme), [theme]);
+  const tool = useConfigStore((s) => s.config?.externalDiffTool ?? "meld");
+  const externalEditor = useConfigStore((s) => s.config?.externalEditor ?? "");
+
+  // Desfazer/refazer também fecham a edição inline aberta, para o centro voltar a
+  // refletir a decisão restaurada (o editor inline não faz parte do histórico).
+  const doUndo = useCallback(() => {
+    setEditing(null);
+    undo();
+  }, [undo]);
+  const doRedo = useCallback(() => {
+    setEditing(null);
+    redo();
+  }, [redo]);
 
   // Carrega as três versões ao abrir / trocar de arquivo.
   useEffect(() => {
@@ -130,13 +173,14 @@ export function MergeEditor({
     };
   }, [details]);
 
-  // (Re)inicializa as decisões quando o modelo muda.
+  // (Re)inicializa as decisões quando o modelo muda — `reset` limpa o histórico,
+  // para o desfazer nunca atravessar de um conflito para o anterior.
   useEffect(() => {
-    if (model) setRes(defaultRes(model.regions));
+    if (model) resetHistory(defaultRes(model.regions));
     setEditing(null);
     setActive(null);
     setExpanded(new Set());
-  }, [model]);
+  }, [model, resetHistory]);
 
   const regions = model?.regions ?? [];
   const pendingCount = regions.reduce(
@@ -174,15 +218,17 @@ export function MergeEditor({
   };
 
   const startEdit = (i: number) => {
+    const text = resolvedLines(i).join("\n");
     setActive(i);
-    setDraft(resolvedLines(i).join("\n"));
+    setDraft(text);
     setEditing(i);
-    setRes((prev) => ({ ...prev, [i]: { choice: "custom", text: resolvedLines(i).join("\n") } }));
+    setRes((prev) => ({ ...prev, [i]: { choice: "custom", text } }));
   };
 
   const changeDraft = (i: number, text: string) => {
     setDraft(text);
-    setRes((prev) => ({ ...prev, [i]: { choice: "custom", text } }));
+    // Coalesce: a digitação contínua no mesmo trecho vira uma entrada de histórico.
+    setRes((prev) => ({ ...prev, [i]: { choice: "custom", text } }), `edit-${i}`);
   };
 
   // Ações em massa da barra de ferramentas.
@@ -196,28 +242,146 @@ export function MergeEditor({
       return next;
     });
 
-  // Navegação por teclado entre conflitos (n / p), como no IntelliJ.
+  // Varinha: resolve sozinho os conflitos "simples" (edições em palavras diferentes
+  // das mesmas linhas), deixando os de sobreposição real para decisão manual.
+  const magicResolve = () => {
+    const patch: Record<number, Res> = {};
+    regions.forEach((r, i) => {
+      if (r.kind !== "conflict" || res[i]) return; // só conflitos ainda pendentes
+      const merged = magicMerge(r);
+      if (merged != null) patch[i] = { choice: "custom", text: merged };
+    });
+    const count = Object.keys(patch).length;
+    if (count === 0) {
+      toast.info(
+        "Nada para resolver sozinho",
+        "Os conflitos restantes têm sobreposição real e precisam de decisão.",
+      );
+      return;
+    }
+    setRes((prev) => ({ ...prev, ...patch }));
+    toast.success(
+      `${count} conflito${count > 1 ? "s" : ""} resolvido${count > 1 ? "s" : ""} pela varinha`,
+    );
+  };
+
+  // Índices dos conflitos (para navegação n/p e botões ‹/›).
+  const conflictIdx = useMemo(
+    () => regions.flatMap((r, i) => (r.kind === "conflict" ? [i] : [])),
+    [regions],
+  );
+  const gotoConflict = useCallback(
+    (dir: 1 | -1) => {
+      if (!conflictIdx.length) return;
+      const cur = active ?? -1;
+      const target =
+        dir === 1
+          ? (conflictIdx.find((i) => i > cur) ?? conflictIdx[0])
+          : ([...conflictIdx].reverse().find((i) => i < cur) ??
+            conflictIdx[conflictIdx.length - 1]);
+      setActive(target);
+      document
+        .getElementById(`mblk-${target}`)
+        ?.scrollIntoView({ block: "center", behavior: "smooth" });
+    },
+    [conflictIdx, active],
+  );
+
+  // Mescla numa ferramenta externa 3-vias (meld); espera fechar e, se limpo, resolve.
+  const mergeReq = useRef(0);
+  const resolveInTool = async () => {
+    if (!path) return;
+    const req = ++mergeReq.current;
+    setMerging(true);
+    let resolved: boolean;
+    try {
+      resolved = await api.openMergeTool(path, tool || undefined);
+    } catch (e) {
+      if (req === mergeReq.current) {
+        setMerging(false);
+        toast.error(`Não consegui abrir o ${tool}`, String(e));
+      }
+      return;
+    }
+    if (req !== mergeReq.current) return; // espera cancelada pelo usuário
+    setMerging(false);
+    if (resolved) {
+      toast.success("Conflito resolvido", `Mesclado no ${tool}.`);
+      onResolved();
+      onClose();
+    } else {
+      toast.warn(
+        "Ainda há marcadores de conflito",
+        `O ${tool} foi fechado, mas o arquivo ainda tem <<<<<<< / >>>>>>>.`,
+      );
+    }
+  };
+  const cancelMerge = () => {
+    mergeReq.current++;
+    setMerging(false);
+  };
+
+  // Abre o arquivo (com marcadores) num editor externo do sistema.
+  const editExternal = () => {
+    if (!path) return;
+    void tryRun(
+      () => api.openInEditor(path, externalEditor || undefined),
+      "Não consegui abrir o editor externo",
+    );
+  };
+
+  // Atalhos de teclado (estilo IntelliJ): n/p pular conflito, m/s/b escolher lado,
+  // Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y desfazer/refazer. O editor inline (CodeMirror)
+  // tem o próprio desfazer, então ignoramos quando o foco está dentro dele.
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
-      if (editing !== null) return;
-      const tag = (e.target as HTMLElement | null)?.tagName;
-      if (tag === "TEXTAREA" || tag === "INPUT") return;
-      if (e.key !== "n" && e.key !== "p") return;
-      const conflicts = regions.flatMap((r, i) => (r.kind === "conflict" ? [i] : []));
-      if (!conflicts.length) return;
-      e.preventDefault();
-      const cur = active ?? -1;
-      const target =
-        e.key === "n"
-          ? (conflicts.find((i) => i > cur) ?? conflicts[0])
-          : ([...conflicts].reverse().find((i) => i < cur) ?? conflicts[conflicts.length - 1]);
-      setActive(target);
-      document.getElementById(`mblk-${target}`)?.scrollIntoView({ block: "center", behavior: "smooth" });
+      const el = e.target as HTMLElement | null;
+      const tag = el?.tagName;
+      const inField = tag === "TEXTAREA" || tag === "INPUT" || !!el?.closest?.(".cm-editor");
+
+      if ((e.ctrlKey || e.metaKey) && (e.key === "z" || e.key === "Z")) {
+        if (inField) return;
+        e.preventDefault();
+        if (e.shiftKey) doRedo();
+        else doUndo();
+        return;
+      }
+      if ((e.ctrlKey || e.metaKey) && (e.key === "y" || e.key === "Y")) {
+        if (inField) return;
+        e.preventDefault();
+        doRedo();
+        return;
+      }
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      if (editing !== null || inField) return;
+
+      if (e.key === "n" || e.key === "p") {
+        e.preventDefault();
+        gotoConflict(e.key === "n" ? 1 : -1);
+        return;
+      }
+
+      // Escolher um lado no trecho ativo.
+      if (active == null) return;
+      const r = regions[active];
+      if (!r || r.kind === "stable") return;
+      if (e.key === "m" && (r.kind === "conflict" || r.kind === "left" || r.kind === "both")) {
+        e.preventDefault();
+        choose(active, "left");
+      } else if (e.key === "s" && (r.kind === "conflict" || r.kind === "right")) {
+        e.preventDefault();
+        choose(active, "right");
+      } else if (e.key === "b" && r.kind === "conflict") {
+        e.preventDefault();
+        choose(active, "both");
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [open, editing, regions, active]);
+    // `choose` só usa setters estáveis; não precisa entrar nas deps.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, editing, regions, active, doUndo, doRedo, gotoConflict]);
 
   const onSave = async () => {
     if (!model || !path || pendingCount > 0) return;
@@ -244,6 +408,21 @@ export function MergeEditor({
     }
   };
 
+  // Fechar com mudanças ainda não salvas pede confirmação.
+  const requestClose = async () => {
+    if (saving || merging) return;
+    if (canUndo) {
+      const ok = await confirm({
+        title: "Descartar a resolução?",
+        message: "Você fez mudanças nesta resolução que ainda não foram salvas. Elas serão perdidas.",
+        danger: true,
+        confirmLabel: "Descartar",
+      });
+      if (!ok) return;
+    }
+    onClose();
+  };
+
   // Conteúdo não-texto / não-carregável → cai nas opções rápidas.
   const fallbackNeeded = !loading && !error && details != null && model == null;
 
@@ -255,14 +434,14 @@ export function MergeEditor({
             <span>Ficar com:</span>
             <button
               onClick={() => quickResolve("mine-full")}
-              disabled={saving}
+              disabled={saving || merging}
               className="rounded border border-line px-2 py-0.5 text-mod hover:bg-panel-2 disabled:opacity-50"
             >
               Minha versão
             </button>
             <button
               onClick={() => quickResolve("theirs-full")}
-              disabled={saving}
+              disabled={saving || merging}
               className="rounded border border-line px-2 py-0.5 text-info hover:bg-panel-2 disabled:opacity-50"
             >
               Do servidor
@@ -271,11 +450,16 @@ export function MergeEditor({
         )}
       </div>
       <div className="flex items-center gap-2">
-        <Button variant="ghost" onClick={onClose} disabled={saving}>
+        <Button variant="ghost" onClick={requestClose} disabled={saving || merging}>
           Cancelar
         </Button>
         {model && (
-          <Button variant="primary" onClick={onSave} loading={saving} disabled={pendingCount > 0}>
+          <Button
+            variant="primary"
+            onClick={onSave}
+            loading={saving}
+            disabled={pendingCount > 0 || merging}
+          >
             {!saving && <Save className="size-4" />}
             Salvar resolução
           </Button>
@@ -287,16 +471,30 @@ export function MergeEditor({
   return (
     <Modal
       open={open}
-      onClose={onClose}
+      onClose={requestClose}
       size="full"
-      locked={saving}
+      locked={saving || merging}
       icon={<GitMerge className="size-5" />}
       title="Resolver conflito"
       description={path ? baseName(path) : undefined}
       help={HELP.mergeEditor}
       footer={footer}
     >
-      <div className="flex h-[78vh] flex-col">
+      <div className="relative flex h-[78vh] flex-col">
+        {/* Espera da ferramenta externa (meld): sobrepõe o corpo até ela fechar. */}
+        {merging && (
+          <div className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-4 bg-panel/85 backdrop-blur-sm">
+            <Loading label={`Aguardando o ${tool}…`} />
+            <p className="max-w-sm text-center text-[12px] leading-relaxed text-faint">
+              Mescle e salve no {tool}, depois feche a janela dele. Se não restar marcador de
+              conflito, o arquivo é marcado como resolvido.
+            </p>
+            <Button variant="ghost" size="sm" onClick={cancelMerge}>
+              Cancelar espera
+            </Button>
+          </div>
+        )}
+
         {loading ? (
           <Loading label="Lendo as três versões…" />
         ) : error ? (
@@ -330,9 +528,46 @@ export function MergeEditor({
           <>
             {/* Barra de ferramentas */}
             <div className="flex flex-wrap items-center gap-2 border-b border-line pb-2.5">
-              <Button variant="outline" size="sm" onClick={applyAllNonConflicting}>
+              <div className="flex items-center gap-1">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={doUndo}
+                  disabled={!canUndo}
+                  title="Desfazer (Ctrl+Z)"
+                >
+                  <Undo2 className="size-3.5" />
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={doRedo}
+                  disabled={!canRedo}
+                  title="Refazer (Ctrl+Shift+Z)"
+                >
+                  <Redo2 className="size-3.5" />
+                </Button>
+              </div>
+
+              <span className="h-5 w-px bg-line" />
+
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={applyAllNonConflicting}
+                title="Aplica as mudanças que não brigam"
+              >
                 <ListChecks className="size-3.5" />
                 Aceitar não-conflitantes
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={magicResolve}
+                title="Resolve sozinho os conflitos simples (edições em palavras diferentes)"
+              >
+                <Sparkles className="size-3.5" />
+                Resolver simples
               </Button>
               <Button variant="outline" size="sm" onClick={() => takeAllConflicts("left")}>
                 Tudo: meu
@@ -340,19 +575,67 @@ export function MergeEditor({
               <Button variant="outline" size="sm" onClick={() => takeAllConflicts("right")}>
                 Tudo: servidor
               </Button>
-              <div className="ml-auto flex items-center gap-2 text-[12px]">
-                <span className="text-faint">n/p: pular conflito</span>
+
+              <div className="ml-auto flex items-center gap-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={resolveInTool}
+                  disabled={saving || merging}
+                  title={`Mesclar em 3 vias no ${tool}`}
+                >
+                  <ExternalLink className="size-3.5" />
+                  Resolver no {tool}
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={editExternal}
+                  title="Abrir o arquivo no editor externo"
+                >
+                  <SquarePen className="size-3.5" />
+                  Editor externo
+                </Button>
+
+                <span className="h-5 w-px bg-line" />
+
+                <div className="flex items-center gap-1">
+                  <IconButton
+                    label="Conflito anterior (p)"
+                    onClick={() => gotoConflict(-1)}
+                    disabled={!conflictIdx.length}
+                  >
+                    <ChevronUp className="size-4" />
+                  </IconButton>
+                  <IconButton
+                    label="Próximo conflito (n)"
+                    onClick={() => gotoConflict(1)}
+                    disabled={!conflictIdx.length}
+                  >
+                    <ChevronDown className="size-4" />
+                  </IconButton>
+                </div>
+
                 {pendingCount > 0 ? (
-                  <span className="rounded-full bg-conflict/15 px-2 py-0.5 font-medium text-conflict">
+                  <span className="rounded-full bg-conflict/15 px-2 py-0.5 text-[12px] font-medium text-conflict">
                     {pendingCount} conflito{pendingCount > 1 ? "s" : ""} restante
                     {pendingCount > 1 ? "s" : ""}
                   </span>
                 ) : (
-                  <span className="rounded-full bg-add/15 px-2 py-0.5 font-medium text-add">
+                  <span className="rounded-full bg-add/15 px-2 py-0.5 text-[12px] font-medium text-add">
                     Sem conflitos pendentes
                   </span>
                 )}
               </div>
+            </div>
+
+            {/* Legenda de atalhos */}
+            <div className="border-b border-line px-0.5 py-1 text-[11px] text-faint">
+              Atalhos: <span className="font-medium text-muted">n/p</span> pular conflito ·{" "}
+              <span className="font-medium text-muted">m</span> meu ·{" "}
+              <span className="font-medium text-muted">s</span> servidor ·{" "}
+              <span className="font-medium text-muted">b</span> ambos ·{" "}
+              <span className="font-medium text-muted">Ctrl+Z</span> desfazer
             </div>
 
             {/* Corpo: grid de 3 colunas com cabeçalho fixo */}
@@ -430,6 +713,8 @@ export function MergeEditor({
                       key={i}
                       domId={`mblk-${i}`}
                       region={r}
+                      path={details?.path ?? path ?? ""}
+                      isDark={isDark}
                       leftSpans={leftSpans}
                       rightSpans={rightSpans}
                       centerLines={centerLines}

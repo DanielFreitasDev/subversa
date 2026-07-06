@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { detectEol, diff3, fromLines, toLines } from "@/lib/merge3";
+import { detectEol, diff3, fromLines, magicMerge, type MergeRegion, toLines } from "@/lib/merge3";
 
 describe("diff3", () => {
   it("texto igual nas três vias vira uma única região estável", () => {
@@ -69,5 +69,39 @@ describe("EOL e linhas", () => {
     const original = "x\r\ny\r\n";
     const { lines, trailingEol } = toLines(original);
     expect(fromLines(lines, detectEol(original), trailingEol)).toBe(original);
+  });
+});
+
+describe("magicMerge (varinha: conflitos simples)", () => {
+  const conflict = (base: string[], mine: string[], theirs: string[]): MergeRegion => ({
+    kind: "conflict",
+    base,
+    mine,
+    theirs,
+  });
+
+  it("edições em palavras diferentes da mesma linha se resolvem sozinhas", () => {
+    // eu troquei o valor; o servidor trocou o nome — não brigam.
+    expect(magicMerge(conflict(["foo = 1"], ["foo = 2"], ["bar = 1"]))).toBe("bar = 2");
+  });
+
+  it("edições na MESMA palavra continuam conflito (null)", () => {
+    expect(magicMerge(conflict(["x = 1"], ["x = 2"], ["x = 3"]))).toBeNull();
+  });
+
+  it("mescla por palavra atravessa múltiplas linhas", () => {
+    const r = conflict(["foo(1)", "bar(2)"], ["foo(9)", "bar(2)"], ["foo(1)", "bar(8)"]);
+    expect(magicMerge(r)).toBe("foo(9)\nbar(8)");
+  });
+
+  it("preserva espaços e indentação (roundtrip por token)", () => {
+    // eu acrescentei um comentário no fim; o servidor trocou a→A no começo.
+    const r = conflict(["  a = 1;"], ["  a = 1; // meu"], ["  A = 1;"]);
+    expect(magicMerge(r)).toBe("  A = 1; // meu");
+  });
+
+  it("só age em regiões de conflito", () => {
+    expect(magicMerge({ kind: "left", base: ["a"], mine: ["b"], theirs: ["a"] })).toBeNull();
+    expect(magicMerge({ kind: "stable", base: ["a"], mine: ["a"], theirs: ["a"] })).toBeNull();
   });
 });

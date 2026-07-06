@@ -87,6 +87,7 @@ pub fn run() {
             svn::commands::resolve,
             svn::commands::conflict_details,
             svn::commands::resolve_with_content,
+            svn::commands::open_merge_tool,
             svn::commands::cleanup,
             svn::commands::delete_remote,
             svn::commands::export_path,

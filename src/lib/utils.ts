@@ -174,3 +174,9 @@ export function dirName(path: string): string {
 
 /** Pausa por `ms` (para pequenas transições). */
 export const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** Resolve o modo efetivo (o tema "system" segue a preferência do SO) → é escuro? */
+export function resolveDark(theme: "dark" | "light" | "system"): boolean {
+  if (theme === "system") return !window.matchMedia?.("(prefers-color-scheme: light)").matches;
+  return theme !== "light";
+}

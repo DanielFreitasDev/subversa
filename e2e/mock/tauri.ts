@@ -383,6 +383,9 @@ export function tauriInit(fx: MockData) {
       case "open_in_editor":
       case "write_text_file":
         return null;
+      case "open_merge_tool":
+        return true; // ferramenta externa "resolveu" o conflito
+
       case "detect_encoding": {
         const p = String((args?.path as string) ?? "");
         if (p.includes("://")) return "unknown"; // conteúdo remoto (diff de histórico)

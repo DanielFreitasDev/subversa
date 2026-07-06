@@ -62,8 +62,10 @@ export const HELP = {
       "Mostra lado a lado as três versões do arquivo: a sua (esquerda), o resultado que você está montando (centro, editável) e a do servidor (direita). Você decide, trecho a trecho, com o que ficar.",
     points: [
       "As mudanças que não brigam entre si já entram sozinhas; só os conflitos de verdade (vermelho) precisam de você.",
-      "Em cada trecho, use “Meu” ou “Servidor” para escolher um lado, “Ambos” para juntar os dois, ou “Editar” para escrever na mão.",
-      "Atalhos: n/p pulam para o próximo/anterior conflito.",
+      "Em cada trecho, use “Meu” ou “Servidor” para escolher um lado, “Ambos” para juntar os dois, ou “Editar” para escrever na mão (com realce de sintaxe).",
+      "“Resolver simples” (varinha) junta sozinho os conflitos em que cada lado mexeu em palavras diferentes da mesma linha.",
+      "Errou? Desfaça/refaça com os botões ou Ctrl+Z / Ctrl+Shift+Z. Prefere outro programa? “Resolver no meld” abre a mescla em 3 vias; “Editor externo” abre o arquivo cru.",
+      "Atalhos: n/p pulam entre conflitos; no trecho ativo, m = meu, s = servidor, b = ambos.",
     ],
     note: "“Salvar resolução” só libera quando não sobrar nenhum conflito pendente. Aí o app grava o arquivo e marca como resolvido.",
   },

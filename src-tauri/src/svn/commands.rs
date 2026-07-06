@@ -1685,19 +1685,28 @@ fn rev_from_sidecar(name: &str) -> Option<String> {
     }
 }
 
-/// Reúne as três versões (base/mine/theirs) de um arquivo em conflito, para o
-/// editor de mesclagem em 3 painéis. Roda `svn info --xml` (independente de
-/// idioma) e lê os arquivos sidecar que o SVN deixou ao lado do arquivo.
-#[tauri::command]
-pub async fn conflict_details(
-    path: String,
-    state: State<'_, AppState>,
-) -> Result<ConflictDetails, String> {
-    let (mode, cfg) = config_snapshot(&state);
-    let abs = validate_local_path(&path, &cfg, "arquivo", false, false)?;
-    let abs_str = abs.to_string_lossy().to_string();
+/// Caminhos absolutos das três versões (base/mine/theirs) de um arquivo em
+/// conflito. Roda `svn info --xml` (independente de idioma) e resolve cada nome
+/// de sidecar (que o SVN deixou ao lado do arquivo) para caminho absoluto. É a
+/// base tanto do editor de 3 painéis (`conflict_details`) quanto da mescla em
+/// ferramenta externa (`open_merge_tool`).
+struct ConflictPaths {
+    /// Arquivo em conflito (a cópia de trabalho).
+    working: PathBuf,
+    /// BASE (ancestral) — `prev-base-file`.
+    base: Option<PathBuf>,
+    /// MINE (minha versão) — `prev-wc-file`.
+    mine: Option<PathBuf>,
+    /// THEIRS (do servidor) — `cur-base-file`.
+    theirs: Option<PathBuf>,
+    /// Havia um bloco `<conflict>` no `svn info` (conflito de texto/propriedade).
+    has_conflict: bool,
+    has_tree_conflict: bool,
+    has_property_conflict: bool,
+}
 
-    let target = peg_safe(&abs_str);
+async fn conflict_paths(abs: &Path, mode: SshMode) -> Result<ConflictPaths, String> {
+    let target = peg_safe(&abs.to_string_lossy());
     let info_xml = run_checked(&["info", "--xml", "--", &target], None, mode).await?;
     let info = parser::parse_info(&info_xml)?;
     let entry = info
@@ -1713,33 +1722,63 @@ pub async fn conflict_details(
         .as_ref()
         .map(|c| c.prop_file.is_some())
         .unwrap_or(false);
+    let resolve = |name: Option<&str>| name.map(|n| sidecar_path(n, &parent));
 
-    let side = |name: Option<&str>| -> (Option<String>, bool, Option<String>) {
-        match name {
-            Some(n) => {
-                let (content, binary) = read_conflict_side(&sidecar_path(n, &parent));
-                (content, binary, rev_from_sidecar(n))
+    Ok(ConflictPaths {
+        working: abs.to_path_buf(),
+        base: resolve(conflict.as_ref().and_then(|c| c.prev_base_file.as_deref())),
+        mine: resolve(conflict.as_ref().and_then(|c| c.prev_wc_file.as_deref())),
+        theirs: resolve(conflict.as_ref().and_then(|c| c.cur_base_file.as_deref())),
+        has_conflict: conflict.is_some(),
+        has_tree_conflict,
+        has_property_conflict,
+    })
+}
+
+/// Reúne as três versões (base/mine/theirs) de um arquivo em conflito, para o
+/// editor de mesclagem em 3 painéis. Lê os sidecar resolvidos por
+/// [`conflict_paths`] e extrai a revisão do NOME de cada um para os rótulos.
+#[tauri::command]
+pub async fn conflict_details(
+    path: String,
+    state: State<'_, AppState>,
+) -> Result<ConflictDetails, String> {
+    let (mode, cfg) = config_snapshot(&state);
+    let abs = validate_local_path(&path, &cfg, "arquivo", false, false)?;
+    let abs_str = abs.to_string_lossy().to_string();
+
+    let cp = conflict_paths(&abs, mode).await?;
+
+    // Lê cada versão (conteúdo + binário) e extrai a revisão do NOME do sidecar
+    // (o sufixo `.r<n>` sobrevive em `file_name()`, com caminho relativo ou absoluto).
+    let side = |p: &Option<PathBuf>| -> (Option<String>, bool, Option<String>) {
+        match p {
+            Some(path) => {
+                let (content, binary) = read_conflict_side(path);
+                let rev = path
+                    .file_name()
+                    .and_then(|s| s.to_str())
+                    .and_then(rev_from_sidecar);
+                (content, binary, rev)
             }
             None => (None, false, None),
         }
     };
 
-    let (base, base_bin, base_rev) =
-        side(conflict.as_ref().and_then(|c| c.prev_base_file.as_deref()));
-    let (mine, mine_bin, _) = side(conflict.as_ref().and_then(|c| c.prev_wc_file.as_deref()));
-    let (theirs, theirs_bin, theirs_rev) =
-        side(conflict.as_ref().and_then(|c| c.cur_base_file.as_deref()));
+    let (base, base_bin, base_rev) = side(&cp.base);
+    let (mine, mine_bin, _) = side(&cp.mine);
+    let (theirs, theirs_bin, theirs_rev) = side(&cp.theirs);
 
     let binary = base_bin || mine_bin || theirs_bin;
     // Texto editável só quando temos as três versões legíveis.
     let is_text = base.is_some() && mine.is_some() && theirs.is_some();
     let kind = if is_text {
         "text"
-    } else if has_tree_conflict {
+    } else if cp.has_tree_conflict {
         "tree"
-    } else if has_property_conflict {
+    } else if cp.has_property_conflict {
         "property"
-    } else if conflict.is_some() {
+    } else if cp.has_conflict {
         "text" // conflito de texto, mas binário/grande/ilegível → front faz fallback
     } else {
         "none"
@@ -1761,8 +1800,8 @@ pub async fn conflict_details(
         theirs,
         base_label,
         theirs_label,
-        has_tree_conflict,
-        has_property_conflict,
+        has_tree_conflict: cp.has_tree_conflict,
+        has_property_conflict: cp.has_property_conflict,
     })
 }
 
@@ -1802,6 +1841,123 @@ pub async fn resolve_with_content(
         mode,
     )
     .await
+}
+
+/// Abre a ferramenta de mesclagem externa (meld/kdiff3/code) em modo 3 vias sobre
+/// um arquivo em conflito e ESPERA ela fechar. Passa as três versões
+/// (minha/base/deles) e aponta a saída para o próprio arquivo. Ao fechar, se não
+/// sobrou marcador de conflito (`<<<<<<<`/`>>>>>>>` no início de linha), marca
+/// como resolvido (`svn resolve --accept working`). Devolve `true` se resolveu;
+/// `false` se a ferramenta fechou mas ainda há marcadores.
+///
+/// As flags de cada ferramenta são fixas aqui (nunca vêm do usuário); só o NOME
+/// do binário vem da config, validado por `sanitize_tool`.
+#[tauri::command]
+pub async fn open_merge_tool(
+    path: String,
+    tool: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<bool, String> {
+    let (mode, cfg) = config_snapshot(&state);
+    let abs = validate_local_path(&path, &cfg, "arquivo", false, false)?;
+
+    // Ferramenta: arg explícito → config → "meld".
+    let raw = match tool {
+        Some(t) if !t.trim().is_empty() => t,
+        _ => cfg.external_diff_tool.clone(),
+    };
+    let raw = if raw.trim().is_empty() {
+        "meld".to_string()
+    } else {
+        raw
+    };
+    let tool = sanitize_tool(&raw).ok_or_else(|| {
+        format!("ferramenta inválida: {raw:?} (use só o nome do binário, ex.: meld)")
+    })?;
+
+    // Mescla 3 vias exige as três versões (base/mine/theirs).
+    let cp = conflict_paths(&abs, mode).await?;
+    let (Some(mine), Some(base), Some(theirs)) = (cp.mine, cp.base, cp.theirs) else {
+        return Err(
+            "este conflito não tem as três versões para mesclar em 3 vias; use as opções rápidas."
+                .to_string(),
+        );
+    };
+    let working = cp.working;
+
+    // argv 3-vias por ferramenta (ordem e flags fixas nossas, nunca do usuário).
+    let mut cmd = std::process::Command::new(&tool);
+    match tool.to_ascii_lowercase().as_str() {
+        // meld: <minha> <base> <deles>, resultado gravado por -o.
+        "meld" => {
+            cmd.arg(&mine)
+                .arg(&base)
+                .arg(&theirs)
+                .arg("-o")
+                .arg(&working);
+        }
+        // kdiff3: <base> <minha> <deles>, resultado por -o.
+        "kdiff3" => {
+            cmd.arg(&base)
+                .arg(&mine)
+                .arg(&theirs)
+                .arg("-o")
+                .arg(&working);
+        }
+        // VS Code / VSCodium: --wait --merge <local> <remoto> <base> <resultado>.
+        "code" | "codium" => {
+            cmd.arg("--wait")
+                .arg("--merge")
+                .arg(&mine)
+                .arg(&theirs)
+                .arg(&base)
+                .arg(&working);
+        }
+        other => {
+            return Err(format!(
+                "ferramenta de mesclagem não suportada: {other}. Use meld, kdiff3 ou code."
+            ));
+        }
+    }
+
+    // Sem descritores herdados, em grupo de processo próprio; limpa env do AppImage.
+    strip_appimage_env(&mut cmd);
+    cmd.stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null());
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        cmd.process_group(0);
+    }
+
+    // Espera a ferramenta fechar (pode demorar — é o usuário mesclando à mão).
+    // Awaitar o filho no runtime do tokio não ocupa worker (reap via SIGCHLD).
+    // `kill_on_drop(false)`: se o front desistir da espera, o meld segue vivo.
+    let mut cmd = tokio::process::Command::from(cmd);
+    cmd.kill_on_drop(false);
+    cmd.status()
+        .await
+        .map_err(|e| format!("não consegui abrir {tool}: {e}. Ele está instalado?"))?;
+
+    // Fechou: sem marcador de conflito restante, marca como resolvido.
+    let bytes = std::fs::read(&working)
+        .map_err(|e| format!("não consegui reler o arquivo após a mescla: {e}"))?;
+    let text = String::from_utf8_lossy(&bytes);
+    let still_conflicted = text
+        .lines()
+        .any(|l| l.starts_with("<<<<<<<") || l.starts_with(">>>>>>>"));
+    if still_conflicted {
+        return Ok(false);
+    }
+    let target = peg_safe(&working.to_string_lossy());
+    run_checked(
+        &["resolve", "--accept", "working", "--", &target],
+        None,
+        mode,
+    )
+    .await?;
+    Ok(true)
 }
 
 #[tauri::command]

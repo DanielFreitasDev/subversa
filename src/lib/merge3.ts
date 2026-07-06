@@ -168,3 +168,50 @@ export function fromLines(lines: string[], eol: "\n" | "\r\n", trailingEol: bool
   const body = lines.join(eol);
   return trailingEol && lines.length > 0 ? body + eol : body;
 }
+
+// ---------------------------------------------------------------------------
+// Resolução automática de conflitos simples (a "varinha" do IntelliJ)
+// ---------------------------------------------------------------------------
+
+/**
+ * Quebra o texto em tokens de forma REVERSÍVEL (concatenar reproduz a entrada):
+ * runs de espaço (incl. quebras de linha), runs de caracteres de palavra, e cada
+ * pontuação isolada. Permite mesclar no nível de palavra reaproveitando o `diff3`.
+ */
+function tokenize(s: string): string[] {
+  return s.match(/\s+|[\p{L}\p{N}_]+|[^\s\p{L}\p{N}_]/gu) ?? [];
+}
+
+/**
+ * Tenta resolver um conflito automaticamente no nível de PALAVRA — o caso "nem
+ * devia ser conflito", em que os dois lados mexeram em partes diferentes da(s)
+ * mesma(s) linha(s). Junta cada versão em texto, tokeniza e roda o MESMO `diff3`
+ * nos tokens; se o merge por palavra não briga (nenhuma sub-região `conflict`),
+ * devolve o texto mesclado. Devolve `null` quando a sobreposição é real e exige
+ * decisão do usuário. Só faz sentido em regiões `conflict`.
+ */
+export function magicMerge(region: MergeRegion): string | null {
+  if (region.kind !== "conflict") return null;
+  const base = tokenize(region.base.join("\n"));
+  const mine = tokenize(region.mine.join("\n"));
+  const theirs = tokenize(region.theirs.join("\n"));
+
+  const out: string[] = [];
+  for (const p of diff3(base, mine, theirs)) {
+    switch (p.kind) {
+      case "stable":
+        out.push(...p.base);
+        break;
+      case "left":
+      case "both":
+        out.push(...p.mine);
+        break;
+      case "right":
+        out.push(...p.theirs);
+        break;
+      case "conflict":
+        return null; // sobreposição real de palavras — sem mágica
+    }
+  }
+  return out.join("");
+}
