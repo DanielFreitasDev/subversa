@@ -440,6 +440,10 @@ function Changes({ wc }: { wc: WorkingCopy }) {
     if (out && reportOutput(out, "Adicionado ao SVN")) {
       await reload(false);
       await refreshOne(wc.path);
+      // O caminho destacado continua o mesmo, mas o status virou "added": o diff
+      // precisa recarregar (svn diff não mostra nada para não-versionados) —
+      // senão o painel ao lado fica vazio até trocar de aba e voltar.
+      setDiffNonce((n) => n + 1);
     }
   };
 
