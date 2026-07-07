@@ -6,6 +6,7 @@
 
 import { common, createLowlight } from "lowlight";
 import type { RootContent } from "hast";
+import { diffWordsWithSpace } from "diff";
 
 import type { DiffFile, DiffLine } from "@/lib/diff";
 import { fileExt } from "@/lib/utils";
@@ -208,4 +209,54 @@ export function mergeTokensWithSegments(
     tOff = 0;
   }
   return spans;
+}
+
+// ---------------------------------------------------------------------------
+// Realce por palavra do editor de conflitos (um lado vs. a BASE)
+// ---------------------------------------------------------------------------
+
+/** Segmentos de palavra do LADO (base→lado): partes não-removidas; `changed` nas adicionadas. */
+function sideWordSegments(baseText: string, sideText: string): Segment[] {
+  if (sideText.length > MAX_HIGHLIGHT_CHARS) return [{ text: sideText, changed: false }];
+  return diffWordsWithSpace(baseText, sideText)
+    .filter((p) => !p.removed)
+    .map((p) => ({ text: p.value, changed: !!p.added }));
+}
+
+/** Quebra segmentos (que podem conter "\n") numa lista de segmentos por linha. */
+function segmentsToLines(segs: Segment[], expected: number): Segment[][] {
+  const lines: Segment[][] = [[]];
+  for (const s of segs) {
+    const parts = s.text.split("\n");
+    for (let i = 0; i < parts.length; i++) {
+      if (i > 0) lines.push([]);
+      if (parts[i] !== "") lines[lines.length - 1].push({ text: parts[i], changed: s.changed });
+    }
+  }
+  while (lines.length < expected) lines.push([]);
+  return lines;
+}
+
+/**
+ * Spans de um lado do merge com realce POR PALAVRA: cruza os tokens de sintaxe
+ * (por linha) com o diff de palavra contra a BASE. `changed` marca o que difere
+ * da base — é o realce intra-linha estilo IntelliJ. `syntaxPerLine` são os spans
+ * de sintaxe já fatiados para as linhas do lado (`null` = sem realce de sintaxe).
+ */
+export function wordMergeSpans(
+  baseLines: string[],
+  sideLines: string[],
+  syntaxPerLine: (Span[] | null)[],
+): Span[][] {
+  // Inserção pura (sem ancestral): tudo seria "adicionado" — o realce por palavra
+  // pintaria o bloco inteiro. O fundo/borda/faixa do bloco já indicam "novo", então
+  // aqui devolvemos só a sintaxe (sem `changed`), como o IntelliJ.
+  if (baseLines.length === 0) {
+    return sideLines.map((line, k) => syntaxPerLine[k] ?? [{ text: line, className: "", changed: false }]);
+  }
+  const segLines = segmentsToLines(
+    sideWordSegments(baseLines.join("\n"), sideLines.join("\n")),
+    sideLines.length,
+  );
+  return sideLines.map((_, k) => mergeTokensWithSegments(syntaxPerLine[k] ?? undefined, segLines[k] ?? []));
 }

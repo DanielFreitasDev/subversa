@@ -21,6 +21,7 @@ import {
   AlertTriangle,
   ChevronDown,
   ChevronUp,
+  Columns3,
   ExternalLink,
   GitMerge,
   ListChecks,
@@ -32,7 +33,7 @@ import {
 } from "lucide-react";
 
 import * as api from "@/lib/api";
-import { tokenizeText, type Span } from "@/components/diff/highlight";
+import { tokenizeText, wordMergeSpans, type Span } from "@/components/diff/highlight";
 import { Button, IconButton } from "@/components/ui/Button";
 import { Loading } from "@/components/ui/Spinner";
 import { Modal } from "@/components/ui/Modal";
@@ -46,6 +47,7 @@ import { confirm } from "@/store/confirm";
 import { useConfigStore } from "@/store/config";
 import { toast } from "@/store/toast";
 import { MergeBlock, type Choice } from "./MergeBlock";
+import { Meld3Block } from "./Meld3Block";
 
 /** Resolução de uma região: o lado escolhido (+ texto, quando editado à mão). */
 interface Res {
@@ -57,6 +59,20 @@ interface Res {
 const STABLE_COLLAPSE = 8;
 
 const NULLS = (n: number): null[] => new Array(n).fill(null);
+
+/** Célula de cabeçalho do grid do meld (fixa no topo ao rolar). */
+function HeaderCell({ children, edge }: { children?: React.ReactNode; edge?: boolean }) {
+  return (
+    <div
+      className={cn(
+        "sticky top-0 z-30 bg-panel px-3 py-1.5 text-[11px] font-semibold tracking-wide text-muted",
+        edge && "border-x border-line",
+      )}
+    >
+      {children}
+    </div>
+  );
+}
 
 /** Fatia os spans de um lado (alinhados 1:1 com as linhas) para uma região. */
 function sliceSpans(spans: Span[][] | null, start: number, count: number): (Span[] | null)[] {
@@ -104,6 +120,8 @@ export function MergeEditor({
   const [draft, setDraft] = useState("");
   const [active, setActive] = useState<number | null>(null);
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
+  // SPIKE: alterna o renderizador estilo IntelliJ (calhas com setas + faixas).
+  const [ijStyle, setIjStyle] = useState(true);
 
   const theme = useConfigStore((s) => s.config?.theme ?? "dark");
   const isDark = useMemo(() => resolveDark(theme), [theme]);
@@ -162,11 +180,26 @@ export function MergeEditor({
       return s;
     });
 
+    // Spans por região com realce POR PALAVRA (cada lado vs. base) — o realce
+    // intra-linha estilo IntelliJ. Estáveis usam só a sintaxe (sem alteração).
+    const leftSpansByRegion = regions.map((r, i) =>
+      r.kind === "stable"
+        ? sliceSpans(mineSpans, starts[i].mine, r.mine.length)
+        : wordMergeSpans(r.base, r.mine, sliceSpans(mineSpans, starts[i].mine, r.mine.length)),
+    );
+    const rightSpansByRegion = regions.map((r, i) =>
+      r.kind === "stable"
+        ? sliceSpans(theirsSpans, starts[i].theirs, r.theirs.length)
+        : wordMergeSpans(r.base, r.theirs, sliceSpans(theirsSpans, starts[i].theirs, r.theirs.length)),
+    );
+
     return {
       regions,
       baseSpans,
       mineSpans,
       theirsSpans,
+      leftSpansByRegion,
+      rightSpansByRegion,
       starts,
       eol: detectEol(details.mine),
       trailingEol: mine.trailingEol,
@@ -211,6 +244,18 @@ export function MergeEditor({
     },
     [regions, res],
   );
+
+  // Número de linha inicial (0-based) da coluna central por região — para a calha
+  // de números contínua do resultado (estilo IntelliJ).
+  const centerStarts = useMemo(() => {
+    const out: number[] = [];
+    let n = 0;
+    for (let i = 0; i < regions.length; i++) {
+      out[i] = n;
+      n += resolvedLines(i).length;
+    }
+    return out;
+  }, [regions, resolvedLines]);
 
   const choose = (i: number, choice: Choice) => {
     setEditing(null);
@@ -576,6 +621,17 @@ export function MergeEditor({
                 Tudo: servidor
               </Button>
 
+              <span className="h-5 w-px bg-line" />
+              <Button
+                variant={ijStyle ? "subtle" : "outline"}
+                size="sm"
+                onClick={() => setIjStyle((v) => !v)}
+                title="Alternar visual estilo IntelliJ (calhas com setas + faixas)"
+              >
+                <Columns3 className="size-3.5" />
+                Estilo IntelliJ
+              </Button>
+
               <div className="ml-auto flex items-center gap-2">
                 <Button
                   variant="ghost"
@@ -638,27 +694,56 @@ export function MergeEditor({
               <span className="font-medium text-muted">Ctrl+Z</span> desfazer
             </div>
 
-            {/* Corpo: grid de 3 colunas com cabeçalho fixo */}
+            {/* Corpo: 3 painéis alinhados (rolam juntos), cabeçalho fixo. No modo
+                IntelliJ há calhas de 32px entre os painéis (setas + faixas). */}
             <div className="min-h-0 flex-1 overflow-auto">
-              <div className="grid grid-cols-3">
-                {(["LOCAL (meu)", "RESULTADO (editável)", "SERVIDOR (deles)"] as const).map(
-                  (h, idx) => (
-                    <div
-                      key={h}
-                      className={cn(
-                        "sticky top-0 z-10 bg-panel px-3 py-1.5 text-[11px] font-semibold tracking-wide text-muted",
-                        idx === 1 && "border-x border-line",
-                      )}
-                    >
-                      {h}
-                      {idx === 0 && details?.baseLabel && (
+              <div
+                className={cn(
+                  "grid",
+                  ijStyle
+                    ? "grid-cols-[minmax(0,1fr)_44px_minmax(0,1fr)_44px_minmax(0,1fr)]"
+                    : "grid-cols-3",
+                )}
+              >
+                {/* Cabeçalho */}
+                {ijStyle ? (
+                  <>
+                    <HeaderCell>
+                      LOCAL (meu)
+                      {details?.baseLabel && (
                         <span className="ml-2 font-normal text-faint">ancestral: {details.baseLabel}</span>
                       )}
-                      {idx === 2 && details?.theirsLabel && (
+                    </HeaderCell>
+                    <HeaderCell />
+                    <HeaderCell edge>RESULTADO (editável)</HeaderCell>
+                    <HeaderCell />
+                    <HeaderCell>
+                      SERVIDOR (deles)
+                      {details?.theirsLabel && (
                         <span className="ml-2 font-normal text-faint">{details.theirsLabel}</span>
                       )}
-                    </div>
-                  ),
+                    </HeaderCell>
+                  </>
+                ) : (
+                  (["LOCAL (meu)", "RESULTADO (editável)", "SERVIDOR (deles)"] as const).map(
+                    (h, idx) => (
+                      <div
+                        key={h}
+                        className={cn(
+                          "sticky top-0 z-10 bg-panel px-3 py-1.5 text-[11px] font-semibold tracking-wide text-muted",
+                          idx === 1 && "border-x border-line",
+                        )}
+                      >
+                        {h}
+                        {idx === 0 && details?.baseLabel && (
+                          <span className="ml-2 font-normal text-faint">ancestral: {details.baseLabel}</span>
+                        )}
+                        {idx === 2 && details?.theirsLabel && (
+                          <span className="ml-2 font-normal text-faint">{details.theirsLabel}</span>
+                        )}
+                      </div>
+                    ),
+                  )
                 )}
 
                 {regions.map((r, i) => {
@@ -672,7 +757,10 @@ export function MergeEditor({
                       <button
                         key={i}
                         onClick={() => setExpanded((s) => new Set(s).add(i))}
-                        className="col-span-3 border-t border-line/60 bg-panel-2/40 py-1 text-center text-[11px] text-faint hover:bg-panel-2"
+                        className={cn(
+                          "border-t border-line/60 bg-panel-2/40 py-1 text-center text-[11px] text-faint hover:bg-panel-2",
+                          ijStyle ? "col-span-5" : "col-span-3",
+                        )}
                       >
                         ⋯ {r.base.length} linhas iguais — mostrar
                       </button>
@@ -680,8 +768,8 @@ export function MergeEditor({
                   }
 
                   const st = model.starts[i];
-                  const leftSpans = sliceSpans(model.mineSpans, st.mine, r.mine.length);
-                  const rightSpans = sliceSpans(model.theirsSpans, st.theirs, r.theirs.length);
+                  const leftSpans = model.leftSpansByRegion[i];
+                  const rightSpans = model.rightSpansByRegion[i];
 
                   // Conteúdo + spans da coluna central conforme a decisão.
                   const choice = r.kind === "stable" ? "base" : res[i]?.choice;
@@ -708,28 +796,30 @@ export function MergeEditor({
                     centerSpans = [];
                   }
 
-                  return (
-                    <MergeBlock
-                      key={i}
-                      domId={`mblk-${i}`}
-                      region={r}
-                      path={details?.path ?? path ?? ""}
-                      isDark={isDark}
-                      leftSpans={leftSpans}
-                      rightSpans={rightSpans}
-                      centerLines={centerLines}
-                      centerSpans={centerSpans}
-                      leftNo={st.mine + 1}
-                      rightNo={st.theirs + 1}
-                      activeChoice={r.kind === "stable" ? undefined : res[i]?.choice}
-                      active={active === i}
-                      editing={editing === i}
-                      draft={draft}
-                      onChoose={(c) => choose(i, c)}
-                      onStartEdit={() => startEdit(i)}
-                      onDraftChange={(text) => changeDraft(i, text)}
-                      onActivate={() => setActive(i)}
-                    />
+                  const common = {
+                    region: r,
+                    path: details?.path ?? path ?? "",
+                    isDark,
+                    leftSpans,
+                    rightSpans,
+                    centerLines,
+                    centerSpans,
+                    leftNo: st.mine + 1,
+                    rightNo: st.theirs + 1,
+                    activeChoice: r.kind === "stable" ? undefined : res[i]?.choice,
+                    active: active === i,
+                    editing: editing === i,
+                    draft,
+                    onChoose: (c: Choice) => choose(i, c),
+                    onStartEdit: () => startEdit(i),
+                    onDraftChange: (text: string) => changeDraft(i, text),
+                    onActivate: () => setActive(i),
+                  };
+
+                  return ijStyle ? (
+                    <Meld3Block key={i} domId={`mblk-${i}`} centerNo={centerStarts[i] + 1} {...common} />
+                  ) : (
+                    <MergeBlock key={i} domId={`mblk-${i}`} {...common} />
                   );
                 })}
               </div>
