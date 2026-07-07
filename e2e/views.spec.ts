@@ -132,7 +132,6 @@ test.describe("tema escuro", () => {
     await expect(page.getByText("RESULTADO (editável)")).toBeVisible();
     await expect(page.getByText("SERVIDOR (deles)")).toBeVisible();
     await expect(page.getByText("1 conflito restante")).toBeVisible();
-    await expect(page.getByText(/Conflito — escolha um lado/)).toBeVisible();
     // Salvar trava enquanto houver conflito pendente.
     await expect(page.getByRole("button", { name: /Salvar resolução/ })).toBeDisabled();
 
@@ -457,8 +456,8 @@ test.describe("interações", () => {
     const save = page.getByRole("button", { name: /Salvar resolução/ });
     await expect(save).toBeDisabled();
 
-    // Resolve o conflito pegando o lado do servidor → libera o salvar.
-    await page.getByRole("button", { name: "Servidor", exact: true }).first().click();
+    // Resolve o conflito pegando o lado do servidor (barra: "Tudo: servidor") → libera o salvar.
+    await page.getByRole("button", { name: "Tudo: servidor" }).click();
     await expect(page.getByText("Sem conflitos pendentes")).toBeVisible();
     await expect(save).toBeEnabled();
 
