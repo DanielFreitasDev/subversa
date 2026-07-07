@@ -16,7 +16,7 @@
  * binário/árvore/propriedade caem nas opções rápidas (`onFallback`).
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
   ChevronDown,
@@ -47,7 +47,7 @@ import { confirm } from "@/store/confirm";
 import { useConfigStore } from "@/store/config";
 import { toast } from "@/store/toast";
 import { MergeBlock, type Choice } from "./MergeBlock";
-import { Meld3Block } from "./Meld3Block";
+import { Meld3Block, regionStripe } from "./Meld3Block";
 
 /** Resolução de uma região: o lado escolhido (+ texto, quando editado à mão). */
 interface Res {
@@ -70,6 +70,66 @@ function HeaderCell({ children, edge }: { children?: React.ReactNode; edge?: boo
       )}
     >
       {children}
+    </div>
+  );
+}
+
+/** Separador de região dobrada — linha ondulada estilo IntelliJ (DIFF_SEPARATOR_WAVE). */
+function FoldedSeparator({ count, isDark, onExpand }: { count: number; isDark: boolean; onExpand: () => void }) {
+  const stroke = isDark ? "#555555" : "#D0D0D0";
+  const w = 100 / 12;
+  let d = "M0,3";
+  for (let i = 0; i < 12; i++) {
+    const x = i * w;
+    d += ` Q${x + w * 0.25},0.6 ${x + w * 0.5},3 Q${x + w * 0.75},5.4 ${x + w},3`;
+  }
+  return (
+    <button
+      onClick={onExpand}
+      className="relative col-span-5 flex items-center justify-center py-1 text-[11px] text-faint hover:text-ink"
+      title="Mostrar linhas iguais"
+    >
+      <svg
+        className="absolute inset-x-0 top-1/2 h-1.5 w-full -translate-y-1/2"
+        viewBox="0 0 100 6"
+        preserveAspectRatio="none"
+        aria-hidden
+      >
+        <path d={d} fill="none" stroke={stroke} strokeWidth={1} vectorEffect="non-scaling-stroke" />
+      </svg>
+      <span className="relative bg-panel px-2">⋯ {count} linhas iguais</span>
+    </button>
+  );
+}
+
+/** Um traço da régua de overview: posição/altura em % do conteúdo + cor do stripe. */
+interface Tick {
+  top: number;
+  height: number;
+  color: string;
+  conflict: boolean;
+  index: number;
+}
+
+/** Régua de overview (à direita) — traços por mudança/conflito, clicáveis (error stripe). */
+function OverviewRuler({ ticks, onJump }: { ticks: Tick[]; onJump: (i: number) => void }) {
+  return (
+    <div className="absolute inset-y-0 right-0 z-20 w-2.5 border-l border-line/40 bg-panel/50">
+      {ticks.map((t) => (
+        <button
+          key={t.index}
+          onClick={() => onJump(t.index)}
+          title="Ir para a mudança"
+          className="absolute inset-x-0.5 rounded-[1px] transition-opacity hover:opacity-100"
+          style={{
+            top: `${t.top}%`,
+            height: `${t.height}%`,
+            minHeight: 3,
+            background: t.color,
+            opacity: t.conflict ? 1 : 0.7,
+          }}
+        />
+      ))}
     </div>
   );
 }
@@ -256,6 +316,43 @@ export function MergeEditor({
     }
     return out;
   }, [regions, resolvedLines]);
+
+  // Régua de overview: mede a posição/altura de cada região alterada no scroll.
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [ticks, setTicks] = useState<Tick[]>([]);
+  const jumpToRegion = useCallback((i: number) => {
+    document.getElementById(`mblk-${i}`)?.scrollIntoView({ block: "center", behavior: "smooth" });
+  }, []);
+  useLayoutEffect(() => {
+    if (!ijStyle || !model) {
+      setTicks([]);
+      return;
+    }
+    const sc = scrollRef.current;
+    if (!sc) return;
+    const total = sc.scrollHeight;
+    if (total <= 0) return;
+    const scRect = sc.getBoundingClientRect();
+    const out: Tick[] = [];
+    regions.forEach((r, i) => {
+      const stripe = regionStripe(r, res[i]?.choice, isDark);
+      if (!stripe) return;
+      const el = document.getElementById(`mblk-${i}`);
+      if (!el) return;
+      const elRect = el.getBoundingClientRect();
+      const top = elRect.top - scRect.top + sc.scrollTop;
+      out.push({
+        top: (top / total) * 100,
+        height: (elRect.height / total) * 100,
+        color: stripe.color,
+        conflict: stripe.conflict,
+        index: i,
+      });
+    });
+    setTicks(out);
+    // `regions` deriva de `model`; medir depende de model/res/expanded/tema/modo.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ijStyle, model, res, expanded, isDark]);
 
   const choose = (i: number, choice: Choice) => {
     setEditing(null);
@@ -695,16 +792,17 @@ export function MergeEditor({
             </div>
 
             {/* Corpo: 3 painéis alinhados (rolam juntos), cabeçalho fixo. No modo
-                IntelliJ há calhas de 32px entre os painéis (setas + faixas). */}
-            <div className="min-h-0 flex-1 overflow-auto">
-              <div
-                className={cn(
-                  "grid",
-                  ijStyle
-                    ? "grid-cols-[minmax(0,1fr)_26px_minmax(0,1fr)_26px_minmax(0,1fr)]"
-                    : "grid-cols-3",
-                )}
-              >
+                IntelliJ há calhas de 40px (setas/X + faixas) e a régua de overview. */}
+            <div className="relative min-h-0 flex-1">
+              <div ref={scrollRef} className="h-full overflow-auto">
+                <div
+                  className={cn(
+                    "grid",
+                    ijStyle
+                      ? "grid-cols-[minmax(0,1fr)_40px_minmax(0,1fr)_40px_minmax(0,1fr)]"
+                      : "grid-cols-3",
+                  )}
+                >
                 {/* Cabeçalho */}
                 {ijStyle ? (
                   <>
@@ -753,14 +851,14 @@ export function MergeEditor({
                     r.base.length > STABLE_COLLAPSE &&
                     !expanded.has(i)
                   ) {
-                    return (
+                    const expand = () => setExpanded((s) => new Set(s).add(i));
+                    return ijStyle ? (
+                      <FoldedSeparator key={i} count={r.base.length} isDark={isDark} onExpand={expand} />
+                    ) : (
                       <button
                         key={i}
-                        onClick={() => setExpanded((s) => new Set(s).add(i))}
-                        className={cn(
-                          "border-t border-line/60 bg-panel-2/40 py-1 text-center text-[11px] text-faint hover:bg-panel-2",
-                          ijStyle ? "col-span-5" : "col-span-3",
-                        )}
+                        onClick={expand}
+                        className="col-span-3 border-t border-line/60 bg-panel-2/40 py-1 text-center text-[11px] text-faint hover:bg-panel-2"
                       >
                         ⋯ {r.base.length} linhas iguais — mostrar
                       </button>
@@ -822,7 +920,9 @@ export function MergeEditor({
                     <MergeBlock key={i} domId={`mblk-${i}`} {...common} />
                   );
                 })}
+                </div>
               </div>
+              {ijStyle && ticks.length > 0 && <OverviewRuler ticks={ticks} onJump={jumpToRegion} />}
             </div>
           </>
         ) : null}

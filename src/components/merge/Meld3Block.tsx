@@ -1,25 +1,24 @@
 /**
  * SPIKE (experimental) — bloco do editor de conflitos no estilo IntelliJ.
  *
- * Calibrado a partir da fonte do IntelliJ (JetBrains/intellij-community):
- *  - Cores exatas do Darcula/Default (DefaultColorSchemesManager.xml) por TIPO de
- *    mudança: adicionado (verde), modificado (azul), apagado (cinza), conflito
- *    (vermelho) — iguais nos dois lados.
+ * Calibrado pela fonte do IntelliJ (JetBrains/intellij-community):
+ *  - Cores exatas do Darcula/Default por TIPO de mudança (adicionado/verde,
+ *    modificado/azul, apagado/cinza, conflito/vermelho), iguais nos dois lados.
  *  - Regra `ignored = innerFragments != null` (DiffDrawUtil): linha modificada
- *    esmaece para `mix(60% cor + 40% fundo)` e as PALAVRAS ficam na cor cheia;
- *    inserção pura fica cheia (bloco sólido).
- *  - Faixas em bezier cúbica com tangentes horizontais, controle a 30%/70% da
- *    largura (`CTRL_PROXIMITY_X=0.3`, DiffDrawUtil#makeCurve). Resolvido = borda
- *    pontilhada (PaintMode.RESOLVED → BorderType.DOTTED).
- *  - Setas de aplicar neutras na calha (AllIcons.Diff.Arrow*), realçadas no hover.
+ *    esmaece p/ mix(60% cor + 40% fundo) e as PALAVRAS ficam cheias; inserção
+ *    pura fica sólida.
+ *  - Faixas em bezier cúbica com tangentes horizontais (controle a 30%/70%).
+ *  - Marcadores na calha: aplicar (seta) + ignorar (X), persistentes e realçados
+ *    no hover (AllIcons.Diff.Arrow / Remove). Borda de bloco (chunk border) no topo,
+ *    pontilhada quando resolvido. Régua de overview alimentada por `regionStripe`.
  *
  * Renderiza uma região do `diff3` em 5 colunas do grid do `MergeEditor`:
- *   [ LOCAL ] [ calha » ] [ RESULTADO ] [ calha « ] [ SERVIDOR ]
+ *   [ LOCAL ] [ calha ] [ RESULTADO ] [ calha ] [ SERVIDOR ]
  * Só apresentação — a lógica (escolha/edição/resolve) vive no `MergeEditor`.
  */
 
 import { Suspense, lazy } from "react";
-import { ChevronsLeft, ChevronsRight, Combine, Eraser, Pencil } from "lucide-react";
+import { ChevronsLeft, ChevronsRight, Combine, Pencil, X } from "lucide-react";
 
 import type { Span } from "@/components/diff/highlight";
 import type { MergeRegion, RegionKind } from "@/lib/merge3";
@@ -38,7 +37,7 @@ type Change = "added" | "deleted" | "modified" | "conflict";
 interface DiffColor {
   /** Fundo cheio (BACKGROUND do esquema) — palavras alteradas e blocos sólidos. */
   bg: string;
-  /** Cor da faixa/stripe (ERROR_STRIPE_COLOR) — borda das faixas. */
+  /** Cor da faixa/stripe (ERROR_STRIPE_COLOR) — bordas e régua de overview. */
   stripe: string;
 }
 
@@ -78,9 +77,29 @@ function rawChange(baseLen: number, sideLen: number): Change {
 function bgFor(change: Change | null, isDark: boolean): { line?: string; word?: string } {
   if (!change) return {};
   const full = palette(isDark)[change].bg;
-  // Inserção/remoção pura = bloco cheio; modificado/conflito = linha esmaecida + palavra cheia.
   const solid = change === "added" || change === "deleted";
   return { line: solid ? full : mutedBg(full), word: full };
+}
+
+/** Cor do stripe representativo de uma região — para a régua de overview do MergeEditor. */
+export function regionStripe(
+  region: MergeRegion,
+  activeChoice: Choice | undefined,
+  isDark: boolean,
+): { color: string; conflict: boolean } | null {
+  const { kind } = region;
+  if (kind === "stable") return null;
+  const pending = kind === "conflict" && activeChoice === undefined;
+  const change: Change = pending
+    ? "conflict"
+    : kind === "conflict"
+      ? activeChoice === "right"
+        ? rawChange(region.base.length, region.theirs.length)
+        : rawChange(region.base.length, region.mine.length)
+      : leftChanged(kind)
+        ? rawChange(region.base.length, region.mine.length)
+        : rawChange(region.base.length, region.theirs.length);
+  return { color: palette(isDark)[change].stripe, conflict: pending };
 }
 
 /** Linhas de código: fundo da linha + realce por palavra (na cor cheia) + números. */
@@ -139,7 +158,7 @@ function CodeLines({
 
 /**
  * Faixa curva ligando um bloco lateral ao resultado. Bezier cúbica com tangentes
- * horizontais nas duas pontas (controle a 30%/70% da largura), como o IntelliJ.
+ * horizontais (controle a 30%/70% da largura), como o IntelliJ.
  */
 function Ribbon({
   color,
@@ -152,15 +171,12 @@ function Ribbon({
   color: DiffColor;
   sideH: number;
   centerH: number;
-  /** "toCenter" = lado(esq)→centro(dir); "fromCenter" = centro(esq)→lado(dir). */
   dir: "toCenter" | "fromCenter";
   rowH: number;
   dotted?: boolean;
 }) {
   const s = Math.max(sideH, 2);
   const c = Math.max(centerH, 2);
-  // Espaço do path 0..100 em x (o SVG estica até a largura da calha). Topo reto
-  // (blocos alinhados no topo da linha do grid); base em bezier 30/70.
   const d =
     dir === "toCenter"
       ? `M0,0 C30,0 70,0 100,0 L100,${c} C70,${c} 30,${s} 0,${s} Z`
@@ -186,7 +202,7 @@ function Ribbon({
   );
 }
 
-/** Seta de aplicar um lado — ícone neutro (cinza), realçado no hover (IntelliJ). */
+/** Seta de aplicar um lado — ícone neutro; realça no hover (persistente). */
 function AcceptArrow({
   dir,
   active,
@@ -206,16 +222,32 @@ function AcceptArrow({
       }}
       title={title}
       className={cn(
-        "relative z-10 flex h-5 w-6 items-center justify-center rounded transition-colors hover:bg-panel-2 hover:text-ink",
+        "relative z-10 flex h-5 w-5 items-center justify-center rounded transition-colors hover:bg-panel-2 hover:text-ink",
         active ? "bg-panel-2 text-ink" : "text-faint/70",
       )}
     >
-      {dir === "right" ? <ChevronsRight className="size-4" /> : <ChevronsLeft className="size-4" />}
+      {dir === "right" ? <ChevronsRight className="size-3.5" /> : <ChevronsLeft className="size-3.5" />}
     </button>
   );
 }
 
-/** Ação do canto do centro (juntar / editar / descartar) — ícone limpo. */
+/** Ignorar um lado (X) — descarta a mudança daquele lado do resultado. */
+function IgnoreBtn({ onClick, title }: { onClick: () => void; title: string }) {
+  return (
+    <button
+      onClick={(e) => {
+        e.stopPropagation();
+        onClick();
+      }}
+      title={title}
+      className="relative z-10 flex h-5 w-4 items-center justify-center rounded text-faint/50 transition-colors hover:bg-panel-2 hover:text-ink"
+    >
+      <X className="size-3" />
+    </button>
+  );
+}
+
+/** Ação do canto do centro (juntar / editar) — ícone limpo. */
 function CornerBtn({
   onClick,
   title,
@@ -294,7 +326,6 @@ export function Meld3Block({
 
   const lRaw = leftChanged(kind) ? rawChange(region.base.length, region.mine.length) : null;
   const rRaw = rightChanged(kind) ? rawChange(region.base.length, region.theirs.length) : null;
-  // Vermelho só enquanto o conflito está PENDENTE; resolvido, cada lado mostra seu tipo.
   const lChange: Change | null = pending ? "conflict" : lRaw;
   const rChange: Change | null = pending ? "conflict" : rRaw;
 
@@ -304,8 +335,6 @@ export function Meld3Block({
   const centerH = pending ? Math.max(mineH, theirsH, baseH, LH) : centerLines.length * LH;
   const rowH = Math.max(mineH, theirsH, centerH, LH);
 
-  // Cor do resultado conforme a decisão (tipo cru do lado escolhido; nunca vermelho
-  // depois de resolvido).
   const centerChange: Change | null = pending
     ? "conflict"
     : activeChoice === "left"
@@ -316,8 +345,6 @@ export function Meld3Block({
           ? (lRaw ?? rRaw ?? "modified")
           : null;
 
-  // Fade do resolvido: esmaece o lado não escolhido de um conflito resolvido; a
-  // faixa de um conflito resolvido fica pontilhada (PaintMode.RESOLVED).
   const resolvedConflict = kind === "conflict" && !pending;
   const mineMuted = stable || (resolvedConflict && activeChoice !== "left" && activeChoice !== "both");
   const theirsMuted = stable || (resolvedConflict && activeChoice !== "right" && activeChoice !== "both");
@@ -326,20 +353,33 @@ export function Meld3Block({
   const rBg = bgFor(rChange, isDark);
   const cBg = bgFor(centerChange, isDark);
 
+  // Borda de bloco (chunk border) no topo, na cor do stripe (mais sutil), pontilhada
+  // quando o conflito está resolvido (BorderType.DOTTED).
+  const chunkTop = (change: Change | null): React.CSSProperties => {
+    if (!change) return {};
+    const c = `color-mix(in srgb, ${C[change].stripe} 45%, transparent)`;
+    return { borderTopColor: c, borderTopStyle: resolvedConflict ? "dotted" : "solid" };
+  };
+
+  // Ignorar um lado: descarta a mudança dele. Em conflito, deixa o outro lado.
+  const ignoreLeft = () => onChoose(kind === "conflict" ? "right" : "base");
+  const ignoreRight = () => onChoose(kind === "conflict" ? "left" : "base");
+
   return (
     <>
       {/* LOCAL (meu) */}
-      <div className="relative min-w-0 border-t border-line/40" onClick={onActivate}>
+      <div className="relative min-w-0 border-t border-line/40" style={chunkTop(lChange)} onClick={onActivate}>
         <CodeLines lines={region.mine} spans={leftSpans} startNo={leftNo} muted={mineMuted} lineBg={lBg.line} wordBg={lBg.word} />
       </div>
 
-      {/* CALHA ESQUERDA: faixa curva + seta » (aplicar meu) */}
-      <div className="relative border-t border-line/40" onClick={onActivate}>
+      {/* CALHA ESQUERDA: faixa curva + [X ignorar] [» aplicar meu] */}
+      <div className="relative border-t border-line/40" style={chunkTop(lChange)} onClick={onActivate}>
         {lChange && (
           <Ribbon color={C[lChange]} sideH={mineH} centerH={centerH} dir="toCenter" rowH={rowH} dotted={resolvedConflict} />
         )}
         {leftChanged(kind) && (
-          <div className="absolute left-0 top-0 z-10">
+          <div className="absolute inset-x-0 top-0 z-10 flex items-center justify-center">
+            <IgnoreBtn onClick={ignoreLeft} title="Ignorar minha versão" />
             <AcceptArrow
               dir="right"
               active={activeChoice === "left"}
@@ -354,6 +394,7 @@ export function Meld3Block({
       <div
         id={domId}
         className="group/center relative min-w-0 scroll-mt-16 border-x border-line/70 border-t border-t-line/40"
+        style={chunkTop(centerChange)}
         onClick={onActivate}
       >
         {active && <span className="pointer-events-none absolute inset-0 z-0 ring-1 ring-inset ring-brand/40" aria-hidden />}
@@ -368,9 +409,6 @@ export function Meld3Block({
             <CornerBtn onClick={onStartEdit} title="Editar à mão" active={activeChoice === "custom"}>
               <Pencil className="size-3.5" />
             </CornerBtn>
-            <CornerBtn onClick={() => onChoose("base")} title="Descartar (manter ancestral)" active={activeChoice === "base"}>
-              <Eraser className="size-3.5" />
-            </CornerBtn>
           </div>
         )}
 
@@ -382,7 +420,6 @@ export function Meld3Block({
           </div>
         ) : pending ? (
           region.base.length > 0 ? (
-            // Conflito pendente: mostra a base (ancestral) esmaecida em vermelho.
             <CodeLines
               lines={region.base}
               spans={region.base.map(() => null)}
@@ -398,25 +435,26 @@ export function Meld3Block({
         )}
       </div>
 
-      {/* CALHA DIREITA: faixa curva + seta « (aplicar servidor) */}
-      <div className="relative border-t border-line/40" onClick={onActivate}>
+      {/* CALHA DIREITA: faixa curva + [« aplicar servidor] [X ignorar] */}
+      <div className="relative border-t border-line/40" style={chunkTop(rChange)} onClick={onActivate}>
         {rChange && (
           <Ribbon color={C[rChange]} sideH={theirsH} centerH={centerH} dir="fromCenter" rowH={rowH} dotted={resolvedConflict} />
         )}
         {rightChanged(kind) && (
-          <div className="absolute right-0 top-0 z-10">
+          <div className="absolute inset-x-0 top-0 z-10 flex items-center justify-center">
             <AcceptArrow
               dir="left"
               active={activeChoice === "right"}
               onClick={() => onChoose("right")}
               title="Aplicar versão do servidor (s)"
             />
+            <IgnoreBtn onClick={ignoreRight} title="Ignorar versão do servidor" />
           </div>
         )}
       </div>
 
       {/* SERVIDOR (deles) */}
-      <div className="relative min-w-0 border-t border-line/40" onClick={onActivate}>
+      <div className="relative min-w-0 border-t border-line/40" style={chunkTop(rChange)} onClick={onActivate}>
         <CodeLines lines={region.theirs} spans={rightSpans} startNo={rightNo} muted={theirsMuted} lineBg={rBg.line} wordBg={rBg.word} />
       </div>
     </>
