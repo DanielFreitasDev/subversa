@@ -1,16 +1,21 @@
 /**
  * SPIKE (experimental) — bloco do editor de conflitos no estilo IntelliJ.
  *
- * Renderiza uma região do `diff3` em CINCO colunas do grid do `MergeEditor`:
- *   [ LOCAL ] [ calha » ] [ RESULTADO ] [ calha « ] [ SERVIDOR ]
+ * Calibrado a partir da fonte do IntelliJ (JetBrains/intellij-community):
+ *  - Cores exatas do Darcula/Default (DefaultColorSchemesManager.xml) por TIPO de
+ *    mudança: adicionado (verde), modificado (azul), apagado (cinza), conflito
+ *    (vermelho) — iguais nos dois lados.
+ *  - Regra `ignored = innerFragments != null` (DiffDrawUtil): linha modificada
+ *    esmaece para `mix(60% cor + 40% fundo)` e as PALAVRAS ficam na cor cheia;
+ *    inserção pura fica cheia (bloco sólido).
+ *  - Faixas em bezier cúbica com tangentes horizontais, controle a 30%/70% da
+ *    largura (`CTRL_PROXIMITY_X=0.3`, DiffDrawUtil#makeCurve). Resolvido = borda
+ *    pontilhada (PaintMode.RESOLVED → BorderType.DOTTED).
+ *  - Setas de aplicar neutras na calha (AllIcons.Diff.Arrow*), realçadas no hover.
  *
- * Espelha o merge do IntelliJ nos detalhes: cor por TIPO de mudança (verde =
- * adicionado, azul = modificado, vermelho = conflito — igual nos dois lados),
- * fundo de linha inteira (claro) + realce por palavra (escuro), FAIXAS curvas
- * ligando cada bloco ao resultado e setas `»`/`«` limpas na calha para aplicar
- * um lado. O centro mostra o conteúdo de verdade (a base, em conflito pendente),
- * nunca um texto no lugar do código. Só apresentação — a lógica vive no
- * `MergeEditor`.
+ * Renderiza uma região do `diff3` em 5 colunas do grid do `MergeEditor`:
+ *   [ LOCAL ] [ calha » ] [ RESULTADO ] [ calha « ] [ SERVIDOR ]
+ * Só apresentação — a lógica (escolha/edição/resolve) vive no `MergeEditor`.
  */
 
 import { Suspense, lazy } from "react";
@@ -27,16 +32,33 @@ const CmEditor = lazy(() => import("@/components/editor/CmEditor"));
 /** Altura de uma linha de código em px — precisa casar com `leading-[20px]`. */
 const LH = 20;
 
-/** Tipo de mudança (legenda do IntelliJ) → cor (variável de tema). */
+/** Tipo de mudança (legenda do IntelliJ). */
 type Change = "added" | "deleted" | "modified" | "conflict";
-const CHANGE_VAR: Record<Change, string> = {
-  added: "--color-add", // verde
-  deleted: "--color-del", // vermelho apagado
-  modified: "--color-info", // azul
-  conflict: "--color-conflict", // vermelho conflito
-};
 
-const tint = (v: string, pct: number) => `color-mix(in oklab, var(${v}) ${pct}%, transparent)`;
+interface DiffColor {
+  /** Fundo cheio (BACKGROUND do esquema) — palavras alteradas e blocos sólidos. */
+  bg: string;
+  /** Cor da faixa/stripe (ERROR_STRIPE_COLOR) — borda das faixas. */
+  stripe: string;
+}
+
+// Valores exatos de DefaultColorSchemesManager.xml (Darcula e Default/claro).
+const DIFF_DARK: Record<Change, DiffColor> = {
+  added: { bg: "#294436", stripe: "#447152" },
+  modified: { bg: "#385570", stripe: "#43698D" },
+  deleted: { bg: "#484A4A", stripe: "#656E76" },
+  conflict: { bg: "#45302B", stripe: "#8F5247" },
+};
+const DIFF_LIGHT: Record<Change, DiffColor> = {
+  added: { bg: "#BEE6BE", stripe: "#AADEAA" },
+  modified: { bg: "#CAD9FA", stripe: "#B8CBF5" },
+  deleted: { bg: "#D6D6D6", stripe: "#C8C8C8" },
+  conflict: { bg: "#FFD5CC", stripe: "#FFC8BD" },
+};
+const palette = (isDark: boolean) => (isDark ? DIFF_DARK : DIFF_LIGHT);
+
+/** Linha "modificada" esmaece: mix(60% cor + 40% fundo do editor) — MIDDLE_COLOR_FACTOR. */
+const mutedBg = (full: string) => `color-mix(in srgb, ${full} 60%, var(--color-panel))`;
 
 function leftChanged(k: RegionKind) {
   return k === "left" || k === "both" || k === "conflict";
@@ -52,23 +74,32 @@ function rawChange(baseLen: number, sideLen: number): Change {
   return "modified";
 }
 
-/** Linhas de código: fundo da linha (claro) + realce por palavra (escuro) + números. */
+/** Fundos de linha e de palavra de um tipo de mudança (regra `ignored`). */
+function bgFor(change: Change | null, isDark: boolean): { line?: string; word?: string } {
+  if (!change) return {};
+  const full = palette(isDark)[change].bg;
+  // Inserção/remoção pura = bloco cheio; modificado/conflito = linha esmaecida + palavra cheia.
+  const solid = change === "added" || change === "deleted";
+  return { line: solid ? full : mutedBg(full), word: full };
+}
+
+/** Linhas de código: fundo da linha + realce por palavra (na cor cheia) + números. */
 function CodeLines({
   lines,
   spans,
   startNo,
   muted,
-  change,
+  lineBg,
+  wordBg,
 }: {
   lines: string[];
   spans: (Span[] | null)[];
   startNo: number | null;
   muted?: boolean;
-  change?: Change | null;
+  lineBg?: string;
+  wordBg?: string;
 }) {
   if (lines.length === 0) return null;
-  const lineBg = change ? tint(CHANGE_VAR[change], 12) : undefined;
-  const wordBg = change ? tint(CHANGE_VAR[change], 30) : undefined;
   return (
     <div className="overflow-x-auto">
       {lines.map((line, i) => {
@@ -106,40 +137,48 @@ function CodeLines({
   );
 }
 
-/** Faixa curva (bezier) ligando um bloco lateral ao resultado, como no IntelliJ. */
+/**
+ * Faixa curva ligando um bloco lateral ao resultado. Bezier cúbica com tangentes
+ * horizontais nas duas pontas (controle a 30%/70% da largura), como o IntelliJ.
+ */
 function Ribbon({
-  change,
+  color,
   sideH,
   centerH,
   dir,
   rowH,
+  dotted,
 }: {
-  change: Change;
+  color: DiffColor;
   sideH: number;
   centerH: number;
   /** "toCenter" = lado(esq)→centro(dir); "fromCenter" = centro(esq)→lado(dir). */
   dir: "toCenter" | "fromCenter";
   rowH: number;
+  dotted?: boolean;
 }) {
-  const v = CHANGE_VAR[change];
   const s = Math.max(sideH, 2);
   const c = Math.max(centerH, 2);
-  const W = 100;
-  // Topo reto (blocos alinhados no topo da linha do grid); base em curva suave.
+  // Espaço do path 0..100 em x (o SVG estica até a largura da calha). Topo reto
+  // (blocos alinhados no topo da linha do grid); base em bezier 30/70.
   const d =
     dir === "toCenter"
-      ? `M0,0 L${W},0 L${W},${c} C${W * 0.5},${c} ${W * 0.5},${s} 0,${s} Z`
-      : `M0,0 L${W},0 L${W},${s} C${W * 0.5},${s} ${W * 0.5},${c} 0,${c} Z`;
+      ? `M0,0 C30,0 70,0 100,0 L100,${c} C70,${c} 30,${s} 0,${s} Z`
+      : `M0,0 C30,0 70,0 100,0 L100,${s} C70,${s} 30,${c} 0,${c} Z`;
   return (
     <svg
       className="pointer-events-none absolute inset-0 h-full w-full"
-      viewBox={`0 0 ${W} ${rowH}`}
+      viewBox={`0 0 100 ${rowH}`}
       preserveAspectRatio="none"
       aria-hidden
     >
       <path
         d={d}
-        style={{ fill: tint(v, 16), stroke: tint(v, 52) }}
+        style={{
+          fill: `color-mix(in srgb, ${color.bg} 90%, transparent)`,
+          stroke: color.stripe,
+          strokeDasharray: dotted ? "2 2" : undefined,
+        }}
         strokeWidth={1}
         vectorEffect="non-scaling-stroke"
       />
@@ -147,21 +186,18 @@ function Ribbon({
   );
 }
 
-/** Seta de aplicar um lado (glifo limpo, sem caixa; cor do tipo de mudança). */
+/** Seta de aplicar um lado — ícone neutro (cinza), realçado no hover (IntelliJ). */
 function AcceptArrow({
   dir,
-  change,
   active,
   onClick,
   title,
 }: {
   dir: "right" | "left";
-  change: Change;
   active: boolean;
   onClick: () => void;
   title: string;
 }) {
-  const v = CHANGE_VAR[change];
   return (
     <button
       onClick={(e) => {
@@ -169,8 +205,10 @@ function AcceptArrow({
         onClick();
       }}
       title={title}
-      className="relative z-10 flex h-5 w-6 items-center justify-center rounded transition-colors hover:brightness-125"
-      style={{ color: `var(${v})`, background: active ? tint(v, 22) : "transparent" }}
+      className={cn(
+        "relative z-10 flex h-5 w-6 items-center justify-center rounded transition-colors hover:bg-panel-2 hover:text-ink",
+        active ? "bg-panel-2 text-ink" : "text-faint/70",
+      )}
     >
       {dir === "right" ? <ChevronsRight className="size-4" /> : <ChevronsLeft className="size-4" />}
     </button>
@@ -252,6 +290,7 @@ export function Meld3Block({
   const { kind } = region;
   const stable = kind === "stable";
   const pending = kind === "conflict" && activeChoice === undefined;
+  const C = palette(isDark);
 
   const lRaw = leftChanged(kind) ? rawChange(region.base.length, region.mine.length) : null;
   const rRaw = rightChanged(kind) ? rawChange(region.base.length, region.theirs.length) : null;
@@ -259,8 +298,6 @@ export function Meld3Block({
   const lChange: Change | null = pending ? "conflict" : lRaw;
   const rChange: Change | null = pending ? "conflict" : rRaw;
 
-  // Alturas dos blocos (px) para as faixas. Conflito pendente: o centro mostra a
-  // base (ou vazio) com a altura do maior lado, para as faixas convergirem limpas.
   const mineH = region.mine.length * LH;
   const theirsH = region.theirs.length * LH;
   const baseH = region.base.length * LH;
@@ -279,29 +316,32 @@ export function Meld3Block({
           ? (lRaw ?? rRaw ?? "modified")
           : null;
 
-  // Fade do resolvido: acalma (esmaece) o lado não escolhido de um conflito resolvido.
+  // Fade do resolvido: esmaece o lado não escolhido de um conflito resolvido; a
+  // faixa de um conflito resolvido fica pontilhada (PaintMode.RESOLVED).
   const resolvedConflict = kind === "conflict" && !pending;
   const mineMuted = stable || (resolvedConflict && activeChoice !== "left" && activeChoice !== "both");
   const theirsMuted = stable || (resolvedConflict && activeChoice !== "right" && activeChoice !== "both");
 
-  const border = (v: string) => ({ background: tint(v, 55) });
+  const lBg = bgFor(lChange, isDark);
+  const rBg = bgFor(rChange, isDark);
+  const cBg = bgFor(centerChange, isDark);
 
   return (
     <>
       {/* LOCAL (meu) */}
       <div className="relative min-w-0 border-t border-line/40" onClick={onActivate}>
-        {lChange && <span className="absolute inset-y-0 left-0 w-0.5" style={border(CHANGE_VAR[lChange])} aria-hidden />}
-        <CodeLines lines={region.mine} spans={leftSpans} startNo={leftNo} muted={mineMuted} change={lChange} />
+        <CodeLines lines={region.mine} spans={leftSpans} startNo={leftNo} muted={mineMuted} lineBg={lBg.line} wordBg={lBg.word} />
       </div>
 
       {/* CALHA ESQUERDA: faixa curva + seta » (aplicar meu) */}
       <div className="relative border-t border-line/40" onClick={onActivate}>
-        {lChange && <Ribbon change={lChange} sideH={mineH} centerH={centerH} dir="toCenter" rowH={rowH} />}
-        {leftChanged(kind) && lChange && (
-          <div className="absolute right-0 top-0 z-10">
+        {lChange && (
+          <Ribbon color={C[lChange]} sideH={mineH} centerH={centerH} dir="toCenter" rowH={rowH} dotted={resolvedConflict} />
+        )}
+        {leftChanged(kind) && (
+          <div className="absolute left-0 top-0 z-10">
             <AcceptArrow
               dir="right"
-              change={lChange}
               active={activeChoice === "left"}
               onClick={() => onChoose("left")}
               title="Aplicar minha versão (m)"
@@ -318,7 +358,6 @@ export function Meld3Block({
       >
         {active && <span className="pointer-events-none absolute inset-0 z-0 ring-1 ring-inset ring-brand/40" aria-hidden />}
 
-        {/* Ações de canto (hover): juntar / editar / descartar. */}
         {!stable && !editing && (
           <div className="absolute right-1 top-0.5 z-20 flex items-center gap-0.5 opacity-0 transition-opacity group-hover/center:opacity-100">
             {kind === "conflict" && (
@@ -343,24 +382,31 @@ export function Meld3Block({
           </div>
         ) : pending ? (
           region.base.length > 0 ? (
-            // Conflito pendente: mostra a base (ancestral) em vermelho, sem números.
-            <CodeLines lines={region.base} spans={region.base.map(() => null)} startNo={null} muted change="conflict" />
+            // Conflito pendente: mostra a base (ancestral) esmaecida em vermelho.
+            <CodeLines
+              lines={region.base}
+              spans={region.base.map(() => null)}
+              startNo={null}
+              muted
+              lineBg={mutedBg(C.conflict.bg)}
+            />
           ) : (
-            <div style={{ height: centerH, background: tint(CHANGE_VAR.conflict, 12) }} />
+            <div style={{ height: centerH, background: mutedBg(C.conflict.bg) }} />
           )
         ) : (
-          <CodeLines lines={centerLines} spans={centerSpans} startNo={centerNo} muted={stable} change={centerChange} />
+          <CodeLines lines={centerLines} spans={centerSpans} startNo={centerNo} muted={stable} lineBg={cBg.line} wordBg={cBg.word} />
         )}
       </div>
 
       {/* CALHA DIREITA: faixa curva + seta « (aplicar servidor) */}
       <div className="relative border-t border-line/40" onClick={onActivate}>
-        {rChange && <Ribbon change={rChange} sideH={theirsH} centerH={centerH} dir="fromCenter" rowH={rowH} />}
-        {rightChanged(kind) && rChange && (
-          <div className="absolute left-0 top-0 z-10">
+        {rChange && (
+          <Ribbon color={C[rChange]} sideH={theirsH} centerH={centerH} dir="fromCenter" rowH={rowH} dotted={resolvedConflict} />
+        )}
+        {rightChanged(kind) && (
+          <div className="absolute right-0 top-0 z-10">
             <AcceptArrow
               dir="left"
-              change={rChange}
               active={activeChoice === "right"}
               onClick={() => onChoose("right")}
               title="Aplicar versão do servidor (s)"
@@ -371,8 +417,7 @@ export function Meld3Block({
 
       {/* SERVIDOR (deles) */}
       <div className="relative min-w-0 border-t border-line/40" onClick={onActivate}>
-        {rChange && <span className="absolute inset-y-0 right-0 w-0.5" style={border(CHANGE_VAR[rChange])} aria-hidden />}
-        <CodeLines lines={region.theirs} spans={rightSpans} startNo={rightNo} muted={theirsMuted} change={rChange} />
+        <CodeLines lines={region.theirs} spans={rightSpans} startNo={rightNo} muted={theirsMuted} lineBg={rBg.line} wordBg={rBg.word} />
       </div>
     </>
   );

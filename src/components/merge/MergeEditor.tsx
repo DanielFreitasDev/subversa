@@ -701,7 +701,7 @@ export function MergeEditor({
                 className={cn(
                   "grid",
                   ijStyle
-                    ? "grid-cols-[minmax(0,1fr)_44px_minmax(0,1fr)_44px_minmax(0,1fr)]"
+                    ? "grid-cols-[minmax(0,1fr)_26px_minmax(0,1fr)_26px_minmax(0,1fr)]"
                     : "grid-cols-3",
                 )}
               >
