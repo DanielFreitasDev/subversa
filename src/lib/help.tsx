@@ -79,6 +79,7 @@ export const HELP = {
       "Busca e substituição de verdade (Ctrl+F / Ctrl+R): diferenciar maiúsculas, palavra inteira, regex (com $1 na substituição) e “só na seleção”.",
       "Vários arquivos em abas (dá até para dividir em dois grupos); Ctrl+Shift+N abre qualquer arquivo da cópia de trabalho; Ctrl+G vai para linha:coluna.",
       "Keymap IntelliJ: Ctrl+D duplica, Ctrl+Y apaga a linha, Ctrl+W expande a seleção, Alt+J multiplica cursores… O botão de teclado na barra lista tudo.",
+      "Botão direito no código abre o menu de edição; “Reformatar código” (Ctrl+Alt+L) formata pela linguagem — Java, XML, JS/TS, CSS, HTML, JSON, Markdown e SQL.",
       "Na barra de status: indentação, fim de linha (LF/CRLF) e codificação — preservados ao salvar (ISO-8859-1 continua ISO-8859-1).",
       "Prefere outro programa? “Abrir no editor externo” usa o editor configurado nas Preferências (ou o app padrão do sistema).",
     ],

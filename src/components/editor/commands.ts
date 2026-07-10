@@ -10,7 +10,7 @@
  */
 
 import { insertNewlineAndIndent } from "@codemirror/commands";
-import { syntaxTree } from "@codemirror/language";
+import { indentRange, syntaxTree } from "@codemirror/language";
 import { EditorSelection, type EditorState, type SelectionRange } from "@codemirror/state";
 import { EditorView, type Command } from "@codemirror/view";
 import type { SyntaxNode } from "@lezer/common";
@@ -131,6 +131,20 @@ export const dedupeLines: Command = (view) =>
     const seen = new Set<string>();
     return ls.filter((l) => !seen.has(l) && (seen.add(l), true));
   });
+
+/** Ctrl+Alt+I — reindenta a seleção (ou o arquivo todo, sem seleção) pelas
+ *  regras de indentação da linguagem. Só ajusta o recuo das linhas — quem
+ *  reflui o código de verdade é o Reformatar (Ctrl+Alt+L). */
+export const reindentSelectionOrDoc: Command = (view) => {
+  const { state } = view;
+  const sel = state.selection.ranges.filter((r) => !r.empty);
+  const from = sel.length ? Math.min(...sel.map((r) => r.from)) : 0;
+  const to = sel.length ? Math.max(...sel.map((r) => r.to)) : state.doc.length;
+  const changes = indentRange(state, from, to);
+  if (changes.empty) return true;
+  view.dispatch({ changes, userEvent: "indent", scrollIntoView: true });
+  return true;
+};
 
 // ---------------------------------------------------------------------------
 // Expandir/encolher seleção (Ctrl+W / Ctrl+Shift+W)

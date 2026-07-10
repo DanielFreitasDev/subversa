@@ -24,6 +24,7 @@ import {
   insertLineAbove,
   insertLineBelow,
   joinLines,
+  reindentSelectionOrDoc,
   removeLastSelection,
   shrinkSelection,
   toggleCase,
@@ -39,6 +40,8 @@ export interface EditorUiHandlers {
   save: () => boolean;
   nextTab: () => boolean;
   prevTab: () => boolean;
+  /** Reformatar código por linguagem (Ctrl+Alt+L). */
+  format: () => boolean;
 }
 
 /** Keymap IntelliJ completo (edição direta + ações de UI via `handlers`). */
@@ -70,6 +73,12 @@ export function editorKeymap(h: EditorUiHandlers): Extension {
       // Comentários (linha já vem do padrão; bloco no atalho do IntelliJ)
       { key: "Mod-/", run: toggleComment, preventDefault: true },
       { key: "Mod-Shift-/", run: toggleBlockComment, preventDefault: true },
+
+      // Formatação — Ctrl+Alt+L como no IntelliJ; a variante com Shift cobre
+      // quem tem o Ctrl+Alt+L tomado pelo bloqueio de tela do KDE.
+      { key: "Mod-Alt-l", run: () => h.format(), preventDefault: true },
+      { key: "Mod-Alt-Shift-l", run: () => h.format(), preventDefault: true },
+      { key: "Mod-Alt-i", run: reindentSelectionOrDoc, preventDefault: true },
 
       // Seleção e cursores
       { key: "Mod-w", run: expandSelection, preventDefault: true },
@@ -120,6 +129,8 @@ export const EDITOR_SHORTCUTS: ShortcutGroup[] = [
       { keys: ["Alt", "Shift", "↑/↓"], label: "Mover linha" },
       { keys: ["Ctrl", "/"], label: "Comentar linha" },
       { keys: ["Ctrl", "Shift", "/"], label: "Comentar bloco" },
+      { keys: ["Ctrl", "Alt", "L"], label: "Reformatar código (também com Shift)" },
+      { keys: ["Ctrl", "Alt", "I"], label: "Reindentar linhas" },
       { keys: ["Ctrl", "Shift", "U"], label: "Maiúsculas/minúsculas" },
       { keys: ["Tab"], label: "Indentar (Shift desfaz)" },
       { keys: ["Shift", "Enter"], label: "Nova linha abaixo" },

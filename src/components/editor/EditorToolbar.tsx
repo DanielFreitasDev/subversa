@@ -1,17 +1,17 @@
 /**
  * Barra de ferramentas do editor embutido: desfazer/refazer, busca e
- * navegação, dobras, menu de operações de linhas e divisão do editor.
- * Tudo age sobre a view focada (`view`); os popups abrem via callbacks do
- * modal. Os atalhos correspondentes aparecem nos tooltips.
+ * navegação, dobras, reformatar por linguagem, menu de operações de linhas e
+ * divisão do editor. Tudo age sobre a view focada (`view`); os popups abrem
+ * via callbacks do modal. Os atalhos correspondentes aparecem nos tooltips e
+ * as mesmas ações existem no botão direito sobre o código (`menus.tsx`).
  */
 
-import { toggleComment } from "@codemirror/commands";
+import { redo, undo } from "@codemirror/commands";
+import { foldAll, unfoldAll } from "@codemirror/language";
 import type { EditorView } from "@codemirror/view";
 import {
-  ArrowDownAZ,
-  ArrowUpDown,
+  AlignLeft,
   Columns2,
-  CopyMinus,
   FileSearch,
   FoldVertical,
   Keyboard,
@@ -23,13 +23,11 @@ import {
   UnfoldVertical,
   Undo2,
 } from "lucide-react";
-import { foldAll, unfoldAll } from "@codemirror/language";
-import { redo, undo } from "@codemirror/commands";
 
 import { cn } from "@/lib/utils";
 import { Tooltip } from "@/components/ui/Tooltip";
-import { ContextMenu, useContextMenu, type MenuItem } from "@/components/ui/ContextMenu";
-import { dedupeLines, duplicateLineOrSelection, joinLines, reverseLines, sortLines, toggleCase } from "./commands";
+import { ContextMenu, useContextMenu } from "@/components/ui/ContextMenu";
+import { lineOpsItems } from "./menus";
 
 function ToolButton({
   label,
@@ -72,9 +70,11 @@ export function EditorToolbar({
   canRedo,
   split,
   canSplit,
+  canFormat,
   onOpenSearch,
   onGotoLine,
   onQuickOpen,
+  onFormat,
   onToggleSplit,
   onShortcuts,
 }: {
@@ -84,9 +84,12 @@ export function EditorToolbar({
   /** Editor dividido em dois grupos? */
   split: boolean;
   canSplit: boolean;
+  /** A linguagem do arquivo ativo tem formatador? */
+  canFormat: boolean;
   onOpenSearch: (replace: boolean) => void;
   onGotoLine: () => void;
   onQuickOpen: () => void;
+  onFormat: () => void;
   onToggleSplit: () => void;
   onShortcuts: () => void;
 }) {
@@ -96,16 +99,6 @@ export function EditorToolbar({
     cmd(view);
     view.focus();
   };
-
-  const lineItems: MenuItem[] = [
-    { id: "dup", label: "Duplicar linha/seleção (Ctrl+D)", icon: <CopyMinus className="size-3.5" />, onSelect: () => run(duplicateLineOrSelection) },
-    { id: "join", label: "Juntar linhas (Ctrl+Shift+J)", icon: <ArrowUpDown className="size-3.5" />, onSelect: () => run(joinLines) },
-    { id: "comment", label: "Comentar/descomentar (Ctrl+/)", onSelect: () => run(toggleComment) },
-    { id: "case", label: "Maiúsculas/minúsculas (Ctrl+Shift+U)", onSelect: () => run(toggleCase) },
-    { id: "sort", label: "Ordenar linhas (A→Z)", icon: <ArrowDownAZ className="size-3.5" />, separatorBefore: true, onSelect: () => run(sortLines) },
-    { id: "rev", label: "Inverter ordem das linhas", onSelect: () => run(reverseLines) },
-    { id: "dedupe", label: "Remover linhas duplicadas", onSelect: () => run(dedupeLines) },
-  ];
 
   return (
     <div className="flex h-9 shrink-0 items-center gap-0.5 border-b border-line bg-panel-2 px-1.5">
@@ -142,12 +135,24 @@ export function EditorToolbar({
 
       <Divider />
 
+      <ToolButton
+        label={
+          canFormat
+            ? "Reformatar código (Ctrl+Alt+L · Ctrl+Alt+Shift+L)"
+            : "Reformatar código — sem formatador para esta linguagem"
+        }
+        disabled={!view || !canFormat}
+        onClick={onFormat}
+      >
+        <AlignLeft className="size-4" />
+      </ToolButton>
+
       <Tooltip label="Operações de linhas">
         <button
           type="button"
           aria-label="Operações de linhas"
           disabled={!view}
-          onClick={(e) => ctx.open(e, lineItems)}
+          onClick={(e) => ctx.open(e, lineOpsItems(run))}
           className="flex h-7 items-center gap-1 rounded-md px-2 text-[11px] font-medium text-muted transition-colors hover:bg-panel-3 hover:text-ink disabled:pointer-events-none disabled:opacity-35"
         >
           <ListOrdered className="size-4" />

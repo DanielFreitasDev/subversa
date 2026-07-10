@@ -183,8 +183,11 @@ src/
 │  ├─ editor/     → editor de código embutido estilo IntelliJ: abas + split
 │  │                (EditorWorkbench/manager), busca/substituição própria
 │  │                (search.ts + SearchPanel), keymap IntelliJ (keymap.ts),
-│  │                ir p/ linha e p/ arquivo, barra de status; CmEditor segue
-│  │                como bloco inline dos painéis de conflito
+│  │                botão direito no código (menus.tsx), reformatador por
+│  │                linguagem (format.ts: prettier standalone + plugin Java
+│  │                FIXADO em 2.6.8 — 2.7+ usa WASM e quebra no WebView —,
+│  │                XML, sql-formatter), ir p/ linha e p/ arquivo, barra de
+│  │                status; CmEditor segue nos blocos inline de conflito
 │  ├─ repos/      → árvore, preview, busca do navegador de repositórios
 │  └─ dialogs/    → Checkout, CreateBranch, Conflict, RepoOp, …
 └─ views/         → Overview, Changes, History, Incoming, Branches, Merge,

@@ -540,6 +540,29 @@ test.describe("interações", () => {
     expect(await page.locator(".cm-editor").count()).toBe(1);
   });
 
+  test("editor: botão direito no código e reformatar por linguagem", async ({ page }) => {
+    await gotoApp(page);
+    await openFirstWc(page);
+    await page.getByRole("button", { name: "Editar", exact: true }).click();
+    await expect(page.locator(".cm-content").first()).toBeVisible();
+
+    // Botão direito sobre o código abre o menu do editor (estilo IntelliJ).
+    await page.locator(".cm-content").click({ button: "right" });
+    await expect(page.getByRole("menuitem", { name: "Copiar", exact: true })).toBeVisible();
+    await expect(page.getByRole("menuitem", { name: /Localizar/ })).toBeVisible();
+    await expect(page.getByRole("menuitem", { name: /Reformatar arquivo/ })).toBeVisible();
+
+    // Comentar a linha atual pelo menu → arquivo sujo (Salvar habilita).
+    await page.getByRole("menuitem", { name: /Comentar\/descomentar/ }).click();
+    await expect(page.getByRole("button", { name: "Salvar", exact: true })).toBeEnabled();
+
+    // Reformatar por linguagem (Java, via prettier standalone) responde com
+    // toast — 1º uso baixa o chunk do formatador, daí o timeout maior.
+    await page.locator(".cm-content").click({ button: "right" });
+    await page.getByRole("menuitem", { name: /Reformatar arquivo/ }).click();
+    await expect(page.getByText(/reformatado|Já estava formatado/)).toBeVisible({ timeout: 20000 });
+  });
+
   test("apagar branch do servidor exige digitar o nome (safety rail)", async ({ page }) => {
     await gotoApp(page);
     await openFirstWc(page);

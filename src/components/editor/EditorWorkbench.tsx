@@ -31,7 +31,9 @@ import { useConfigStore } from "@/store/config";
 import { toast } from "@/store/toast";
 
 import { languageLabelFor } from "./cm";
+import { canFormat, formatText, minimalReplace } from "./format";
 import { EditorManager } from "./manager";
+import { editorContextItems } from "./menus";
 import { EditorTabs, type TabMeta } from "./EditorTabs";
 import { EditorToolbar } from "./EditorToolbar";
 import { GotoLinePopup } from "./GotoLinePopup";
@@ -172,6 +174,10 @@ export default function EditorWorkbench({
             },
             nextTab: () => cycleTab(1),
             prevTab: () => cycleTab(-1),
+            format: () => {
+              void formatActive();
+              return true;
+            },
           },
           onUpdate: scheduleTick,
           onFocus: (p) => {
@@ -297,6 +303,38 @@ export default function EditorWorkbench({
     for (const t of snapRef.current.tabs) {
       if (isTabDirty(t)) await saveTab(t.path);
     }
+  };
+
+  // --- reformatar por linguagem (Ctrl+Alt+L) ----------------------------------
+
+  const formatActive = async () => {
+    const { active, focusedPane, tabs } = snapRef.current;
+    const p = active[focusedPane];
+    const handle = p ? managerRef.current?.get(p) : undefined;
+    const tab = tabs.find((t) => t.path === p);
+    if (!p || !handle || !tab || tab.loading || tab.error) return;
+    if (!canFormat(p)) {
+      toast.info("Sem formatador para esta linguagem", languageLabelFor(p));
+      return;
+    }
+    const text = handle.text();
+    const r = await formatText(p, text, handle.indent);
+    if ("error" in r) {
+      toast.error("Não foi possível reformatar", r.error);
+      return;
+    }
+    if (r.ok === text) {
+      toast.info("Já estava formatado", titleOf(tab));
+      return;
+    }
+    // Troca só o miolo que mudou (preserva cursor/scroll do resto) e vira um
+    // único passo de desfazer.
+    handle.view.dispatch({
+      changes: minimalReplace(text, r.ok),
+      userEvent: "input.format",
+      scrollIntoView: true,
+    });
+    toast.success("Arquivo reformatado", `${titleOf(tab)} · ${languageLabelFor(p)}`);
   };
 
   // --- fechar abas/modal -----------------------------------------------------
@@ -615,9 +653,11 @@ export default function EditorWorkbench({
           canRedo={!!view && redoDepth(view.state) > 0}
           split={panes.length > 1}
           canSplit={tabs.length >= 2}
+          canFormat={!!focusedActivePath && canFormat(focusedActivePath)}
           onOpenSearch={(replace) => searchRef.current?.open({ replace })}
           onGotoLine={() => setGotoOpen(true)}
           onQuickOpen={openQuickOpen}
+          onFormat={() => void formatActive()}
           onToggleSplit={toggleSplit}
           onShortcuts={() => setShortcutsOpen(true)}
         />
@@ -677,6 +717,22 @@ export default function EditorWorkbench({
                     <div
                       ref={(el) => {
                         hostRefs.current[i] = el;
+                      }}
+                      // Botão direito no código: menu de edição do editor (o
+                      // mousedown já focou este grupo via section acima).
+                      onContextMenu={(e) => {
+                        const v = managerRef.current?.get(activeTab.path)?.view;
+                        if (!v) return;
+                        ctx.open(
+                          e,
+                          editorContextItems({
+                            view: v,
+                            formatEnabled: canFormat(activeTab.path),
+                            onSearch: (replace) => searchRef.current?.open({ replace }),
+                            onGotoLine: () => setGotoOpen(true),
+                            onFormat: () => void formatActive(),
+                          }),
+                        );
                       }}
                       className={cn("h-full [&_.cm-editor]:h-full", focusedPane !== i && "opacity-95")}
                     />
