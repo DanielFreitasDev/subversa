@@ -454,6 +454,48 @@ test.describe("backups", () => {
 
 // Fluxos de escrita (sem screenshot): exercitam confirmações e safety rails.
 test.describe("interações", () => {
+  test("botão direito sem menu próprio: menu nativo do WebKit é cancelado", async ({ page }) => {
+    await gotoApp(page);
+
+    // O menu nativo (Voltar/Avançar/Recarregar) vive fora do DOM — o sinal
+    // observável do bloqueio global (main.tsx) é o cancelamento do evento.
+    const init = { bubbles: true, cancelable: true };
+
+    // Fundo do app, onde o botão direito não tem função: evento cancelado…
+    expect(
+      await page.evaluate(
+        (i) => !document.body.dispatchEvent(new MouseEvent("contextmenu", i)),
+        init,
+      ),
+    ).toBe(true);
+    // …e sem abrir menu do app.
+    await expect(page.getByRole("menu")).toHaveCount(0);
+
+    // Texto selecionado sob o cursor mantém o menu nativo (Copiar). Tem que ser
+    // uma área `.selectable` — o resto do app é user-select:none e nem seleciona.
+    await openFirstWc(page);
+    expect(
+      await page
+        .locator(".diff-code")
+        .first()
+        .evaluate((el, i) => {
+          const range = document.createRange();
+          range.selectNodeContents(el);
+          const sel = window.getSelection()!;
+          sel.removeAllRanges();
+          sel.addRange(range);
+          return !el.dispatchEvent(new MouseEvent("contextmenu", i));
+        }, init),
+    ).toBe(false);
+
+    // Campo de texto mantém o menu nativo (Colar).
+    expect(
+      await page
+        .getByPlaceholder(/Mensagem do commit/)
+        .evaluate((el, i) => !el.dispatchEvent(new MouseEvent("contextmenu", i)), init),
+    ).toBe(false);
+  });
+
   test("commit direto na trunk pede confirmação e envia", async ({ page }) => {
     await gotoApp(page);
     await openFirstWc(page); // sna = trunk (linha principal)
