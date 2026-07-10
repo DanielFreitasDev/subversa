@@ -73,10 +73,13 @@ export const HELP = {
   editor: {
     title: "Editar arquivo",
     intro:
-      "Abre o arquivo da sua cópia local num editor de código aqui no app, para ajustes rápidos sem sair do Subversa. É o conteúdo atual do arquivo (com as suas alterações), não a versão do servidor.",
+      "Abre o arquivo da sua cópia local num editor de código completo aqui no app — com os atalhos do IntelliJ. É o conteúdo atual do arquivo (com as suas alterações), não a versão do servidor.",
     points: [
       "Salvar (ou Ctrl+S) grava no disco — não envia ao servidor. O arquivo passa a “modificado” na lista; publicar continua sendo o commit.",
-      "Tem realce de sintaxe, busca (Ctrl+F), múltiplos cursores e desfazer/refazer, como um editor de código de verdade.",
+      "Busca e substituição de verdade (Ctrl+F / Ctrl+R): diferenciar maiúsculas, palavra inteira, regex (com $1 na substituição) e “só na seleção”.",
+      "Vários arquivos em abas (dá até para dividir em dois grupos); Ctrl+Shift+N abre qualquer arquivo da cópia de trabalho; Ctrl+G vai para linha:coluna.",
+      "Keymap IntelliJ: Ctrl+D duplica, Ctrl+Y apaga a linha, Ctrl+W expande a seleção, Alt+J multiplica cursores… O botão de teclado na barra lista tudo.",
+      "Na barra de status: indentação, fim de linha (LF/CRLF) e codificação — preservados ao salvar (ISO-8859-1 continua ISO-8859-1).",
       "Prefere outro programa? “Abrir no editor externo” usa o editor configurado nas Preferências (ou o app padrão do sistema).",
     ],
     note: "Arquivos binários ou muito grandes não abrem aqui — use o editor externo.",

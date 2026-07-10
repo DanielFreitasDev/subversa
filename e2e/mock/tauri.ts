@@ -402,6 +402,21 @@ export function tauriInit(fx: MockData) {
             "package br.tjsc.sna.processo;\n\npublic class ProcessoService {\n  // editar aqui…\n}\n",
           encoding: "utf-8",
         };
+      case "list_wc_files":
+        // Arquivos da WC para o "Ir para arquivo" do editor (Ctrl+Shift+N).
+        return [
+          ".classpath",
+          "build.xml",
+          "config/local.properties",
+          "docs/CHANGELOG.md",
+          "src/merge/Conciliador.java",
+          "src/processo/ProcessoDAO.java",
+          "src/processo/ProcessoService.java",
+          "src/relatorio/Relatorio.java",
+          "src/util/Datas.java",
+          "WebContent/META-INF/context.xml",
+          "WebContent/WEB-INF/web.xml",
+        ];
       case "get_command_log":
         return fx.commandLog;
       case "clear_command_log":

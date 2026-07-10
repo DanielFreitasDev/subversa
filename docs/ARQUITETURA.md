@@ -79,7 +79,8 @@ local, com revisão opcional), `get_url_info`, `diff_urls`.
 `svn_version`, `check_prerequisites`, `test_connection`,
 `reveal_in_file_manager`, `open_external_diff`, `read_text_file`/
 `write_text_file`/`detect_encoding`/`detect_encoding_url` (editor embutido,
-preservando ISO-8859-1), `open_in_editor`, `suggested_base_dir`,
+preservando ISO-8859-1), `list_wc_files` (arquivos da working copy para o
+"Ir para arquivo" do editor), `open_in_editor`, `suggested_base_dir`,
 `get_command_log`/`clear_command_log`/`command_log_path` (Registro).
 
 ### Validações e limites
@@ -161,6 +162,9 @@ src/
 │  ├─ types.ts    → espelho dos tipos do Rust
 │  ├─ diff.ts     → parser do diff unificado → hunks (testes em diff.test.ts)
 │  ├─ merge3.ts   → diff3 do editor de conflitos (testes em merge3.test.ts)
+│  ├─ findreplace.ts → motor de busca/substituição do editor (regex, caixa,
+│  │                   palavra inteira, $1…) · fuzzy.ts → "Ir para arquivo"
+│  │                   · indent.ts → detecção de indentação (todos com testes)
 │  ├─ op.ts       → tratamento uniforme de resultado (toasts + dicas + cancelado)
 │  ├─ errors.ts   → mensagens amigáveis; backup.ts → guarda destrutiva
 │  ├─ help.tsx    → conteúdo dos popovers de ajuda (ícone ?)
@@ -175,7 +179,12 @@ src/
 │  ├─ diff/       → DiffViewer (realce palavra a palavra com jsdiff)
 │  ├─ blame/      → BlameModal (autoria fora do navegador)
 │  ├─ history/    → RevisionLog (mestre-detalhe reutilizável)
-│  ├─ merge/      → MergeEditor (3 painéis) · editor/ → CodeMirror embutido
+│  ├─ merge/      → MergeEditor (3 painéis)
+│  ├─ editor/     → editor de código embutido estilo IntelliJ: abas + split
+│  │                (EditorWorkbench/manager), busca/substituição própria
+│  │                (search.ts + SearchPanel), keymap IntelliJ (keymap.ts),
+│  │                ir p/ linha e p/ arquivo, barra de status; CmEditor segue
+│  │                como bloco inline dos painéis de conflito
 │  ├─ repos/      → árvore, preview, busca do navegador de repositórios
 │  └─ dialogs/    → Checkout, CreateBranch, Conflict, RepoOp, …
 └─ views/         → Overview, Changes, History, Incoming, Branches, Merge,

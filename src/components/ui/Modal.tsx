@@ -37,6 +37,8 @@ export interface ModalProps {
   /** Explicação didática (ícone ? no cabeçalho). */
   help?: HelpContent;
   className?: string;
+  /** Sobrescreve o padding do corpo (ex.: `p-0` para conteúdo edge-to-edge). */
+  bodyClassName?: string;
 }
 
 export function Modal({
@@ -51,6 +53,7 @@ export function Modal({
   locked,
   help,
   className,
+  bodyClassName,
 }: ModalProps) {
   const dialogRef = useRef<HTMLDivElement>(null);
   const tokenRef = useRef<object>({});
@@ -152,7 +155,7 @@ export function Modal({
                 )}
               </div>
             )}
-            <div className="px-5 py-4">{children}</div>
+            <div className={cn("px-5 py-4", bodyClassName)}>{children}</div>
             {footer && (
               <div className="flex items-center justify-end gap-2 border-t border-line px-5 py-3.5">
                 {footer}

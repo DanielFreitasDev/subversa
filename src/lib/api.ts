@@ -275,6 +275,13 @@ export const writeTextFile = (path: string, content: string, encoding: string) =
   invoke<void>("write_text_file", { path, content, encoding });
 
 /**
+ * Lista os arquivos da cópia de trabalho (recursivo; caminhos relativos à
+ * raiz, ordenados) para o "Ir para arquivo" do editor embutido. Pastas
+ * ocultas (`.svn`, `.git`…) ficam de fora.
+ */
+export const listWcFiles = (path: string) => invoke<string[]>("list_wc_files", { path });
+
+/**
  * Detecta a codificação de um arquivo local para o badge da UI (sem carregar o
  * conteúdo). Retorna `"utf-8"`, `"iso-8859-1"`, `"binary"` ou `"unknown"` (inclui
  * caminhos não-locais, como as URLs do diff de histórico). Nunca rejeita.

@@ -229,8 +229,10 @@ function Changes({ wc }: { wc: WorkingCopy }) {
   // Força recarregar o diff após salvar no editor embutido: o arquivo mudou em
   // disco, mas o caminho destacado continua o mesmo.
   const [diffNonce, setDiffNonce] = useState(0);
-  // Arquivo aberto no editor de código embutido.
-  const [editPath, setEditPath] = useState<string | null>(null);
+  // Pedido de edição no editor embutido (nonce: repetir o mesmo arquivo
+  // reativa a aba mesmo com o modal já aberto).
+  const [editReq, setEditReq] = useState<{ path: string; n: number } | null>(null);
+  const requestEdit = (path: string) => setEditReq((r) => ({ path, n: (r?.n ?? 0) + 1 }));
   const [message, setMessage] = useState("");
   const [committing, setCommitting] = useState(false);
   const [checkingServer, setCheckingServer] = useState(false);
@@ -332,7 +334,7 @@ function Changes({ wc }: { wc: WorkingCopy }) {
       ) {
         return;
       }
-      if (editPath || mergePath || conflictPath || useConfirmStore.getState().pending) return;
+      if (editReq || mergePath || conflictPath || useConfirmStore.getState().pending) return;
       const item = useUndoStore.getState().latestFor(wc.path);
       if (!item) return;
       e.preventDefault();
@@ -340,7 +342,7 @@ function Changes({ wc }: { wc: WorkingCopy }) {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [wc.path, editPath, mergePath, conflictPath]);
+  }, [wc.path, editReq, mergePath, conflictPath]);
 
   const selectedEntries = entries.filter((e) => checked.has(e.path));
   const selectableEntries = entries.filter(isSelectable);
@@ -614,7 +616,7 @@ function Changes({ wc }: { wc: WorkingCopy }) {
         id: "edit",
         label: "Editar arquivo",
         icon: <Pencil className="size-3.5" />,
-        onSelect: () => setEditPath(e.path),
+        onSelect: () => requestEdit(e.path),
       });
       items.push({
         id: "edit-external",
@@ -791,7 +793,7 @@ function Changes({ wc }: { wc: WorkingCopy }) {
                     ? setMergePath(e.path)
                     : setConflictPath(e.path)
                 }
-                onEdit={isEditable(e) ? () => setEditPath(e.path) : undefined}
+                onEdit={isEditable(e) ? () => requestEdit(e.path) : undefined}
                 onContext={(ev) => {
                   setHighlight(e.path);
                   ctx.open(ev, itemsFor(e));
@@ -936,7 +938,7 @@ function Changes({ wc }: { wc: WorkingCopy }) {
           {highlightEntry && (
             <div className="flex shrink-0 items-center gap-1.5">
               {isEditable(highlightEntry) && (
-                <Button variant="ghost" size="sm" onClick={() => setEditPath(highlightEntry.path)}>
+                <Button variant="ghost" size="sm" onClick={() => requestEdit(highlightEntry.path)}>
                   <Pencil className="size-3.5" />
                   Editar
                 </Button>
@@ -989,10 +991,12 @@ function Changes({ wc }: { wc: WorkingCopy }) {
       </div>
 
       <CodeEditorModal
-        open={!!editPath}
-        path={editPath}
-        relPath={entries.find((e) => e.path === editPath)?.relPath}
-        onClose={() => setEditPath(null)}
+        open={!!editReq}
+        path={editReq?.path ?? null}
+        relPath={entries.find((e) => e.path === editReq?.path)?.relPath}
+        nonce={editReq?.n ?? 0}
+        root={wc.path}
+        onClose={() => setEditReq(null)}
         onSaved={async () => {
           await reload(false);
           await refreshOne(wc.path);

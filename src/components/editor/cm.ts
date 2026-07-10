@@ -37,6 +37,23 @@ export function cmLanguageFor(path: string): Extension | null {
   return (loadLanguage(name) as Extension | null) ?? null;
 }
 
+/** Nome amigável da linguagem, para a barra de status do editor. */
+const LANG_LABEL: Partial<Record<LanguageName, string>> = {
+  c: "C", cpp: "C++", java: "Java",
+  js: "JavaScript", jsx: "JavaScript", mjs: "JavaScript", cjs: "JavaScript",
+  ts: "TypeScript", tsx: "TypeScript",
+  py: "Python", sql: "SQL",
+  xml: "XML", svg: "SVG", vue: "Vue",
+  html: "HTML", css: "CSS", scss: "SCSS", less: "Less",
+  json: "JSON", sh: "Shell", bash: "Shell",
+  rs: "Rust", md: "Markdown", markdown: "Markdown",
+};
+
+export function languageLabelFor(path: string): string {
+  const name = EXT_TO_LANG[fileExt(path)];
+  return (name && LANG_LABEL[name]) || "Texto";
+}
+
 /** Fonte mono do app + entrelinha — comum aos dois modos (cheio e inline). */
 const SCROLLER = {
   fontFamily: "var(--font-mono, 'JetBrains Mono Variable', ui-monospace, monospace)",

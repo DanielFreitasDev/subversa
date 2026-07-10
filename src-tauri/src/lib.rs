@@ -105,6 +105,7 @@ pub fn run() {
             svn::commands::open_external_diff,
             svn::commands::read_text_file,
             svn::commands::write_text_file,
+            svn::commands::list_wc_files,
             svn::commands::detect_encoding,
             svn::commands::detect_encoding_url,
             svn::commands::open_in_editor,

@@ -149,6 +149,35 @@ test.describe("tema escuro", () => {
     await expect(page).toHaveScreenshot("merge-editor.png");
   });
 
+  test("editor de código embutido (abas, busca IntelliJ, barra de status)", async ({ page }) => {
+    await gotoApp(page);
+    await openFirstWc(page);
+
+    // Abre pelo botão "Editar" do cabeçalho do diff (arquivo já destacado).
+    await page.getByRole("button", { name: "Editar", exact: true }).click();
+    await expect(page.locator(".cm-content").first()).toBeVisible();
+    await expect(page.getByRole("tab", { name: /ProcessoService\.java/ })).toBeVisible();
+    // Barra de status: posição, indentação, EOL e linguagem.
+    await expect(page.getByText("Java", { exact: true })).toBeVisible();
+    await expect(page.getByText("LF", { exact: true })).toBeVisible();
+
+    // Ctrl+F abre a busca; digitar já pula ao 1º resultado e conta (1/2).
+    await page.keyboard.press("Control+f");
+    const busca = page.getByPlaceholder("Localizar…");
+    await expect(busca).toBeFocused();
+    await busca.fill("processo");
+    await expect(page.getByText("1/2")).toBeVisible();
+
+    // "Palavra inteira" refina: só o "processo" do package sobra.
+    await page.getByRole("button", { name: /Palavra inteira/ }).click();
+    await expect(page.getByText("1/1")).toBeVisible();
+
+    // Estabiliza hovers/tooltip e captura o baseline.
+    await page.mouse.move(680, 800);
+    await page.waitForTimeout(350);
+    await expect(page).toHaveScreenshot("code-editor.png");
+  });
+
   test("histórico (log + diff da revisão)", async ({ page }) => {
     await gotoApp(page);
     await openFirstWc(page);
@@ -463,6 +492,52 @@ test.describe("interações", () => {
 
     await save.click();
     await expect(page.getByText("Conflito resolvido")).toBeVisible();
+  });
+
+  test("editor: substituir tudo, salvar, ir para arquivo e ir para linha", async ({ page }) => {
+    await gotoApp(page);
+    await openFirstWc(page);
+    await page.getByRole("button", { name: "Editar", exact: true }).click();
+    await expect(page.locator(".cm-content").first()).toBeVisible();
+
+    // Ctrl+R abre a busca já com a linha de substituição.
+    await page.keyboard.press("Control+r");
+    await page.getByPlaceholder("Localizar…").fill("editar");
+    await page.getByPlaceholder("Substituir por…").fill("ajustar");
+    await page.getByRole("button", { name: "Substituir tudo" }).click();
+    await expect(page.getByText("1 ocorrência(s) substituída(s)")).toBeVisible();
+
+    // Ficou sujo → Salvar habilita; Ctrl+S grava e o toast confirma.
+    await expect(page.getByRole("button", { name: "Salvar", exact: true })).toBeEnabled();
+    await page.keyboard.press("Control+s");
+    await expect(page.getByText("Arquivo salvo")).toBeVisible();
+
+    // Ir para arquivo (Ctrl+Shift+N): fuzzy sobre a cópia de trabalho → nova aba.
+    await page.keyboard.press("Control+Shift+n");
+    const quick = page.getByPlaceholder(/Ir para arquivo/);
+    await expect(quick).toBeFocused();
+    await quick.fill("webxml");
+    await page.getByRole("button", { name: /WebContent\/WEB-INF\/web\.xml/ }).click();
+    await expect(page.getByRole("tab", { name: /web\.xml/ })).toBeVisible();
+    expect(await page.getByRole("tab").count()).toBe(2);
+
+    // Ir para linha (Ctrl+G) reposiciona o cursor (2:1 na barra de status).
+    await page.keyboard.press("Control+g");
+    const goto = page.locator("#sv-goto");
+    await expect(goto).toBeFocused();
+    await goto.fill("2");
+    await goto.press("Enter");
+    await expect(page.getByText("2:1", { exact: true })).toBeVisible();
+
+    // Dividir à direita (menu da aba): dois grupos, cada um com seu editor.
+    await page.getByRole("tab", { name: /web\.xml/ }).click({ button: "right" });
+    await page.getByRole("menuitem", { name: "Dividir à direita" }).click();
+    expect(await page.locator(".cm-editor").count()).toBe(2);
+
+    // Ctrl+F4 fecha a aba ativa (web.xml, à direita) e recolhe o grupo vazio.
+    await page.keyboard.press("Control+F4");
+    await expect(page.getByRole("tab", { name: /web\.xml/ })).toHaveCount(0);
+    expect(await page.locator(".cm-editor").count()).toBe(1);
   });
 
   test("apagar branch do servidor exige digitar o nome (safety rail)", async ({ page }) => {

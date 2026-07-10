@@ -2491,6 +2491,87 @@ pub async fn write_text_file(
     write_atomic(&abs, &bytes)
 }
 
+/// Teto de arquivos listados para o "Ir para arquivo" (proteção contra
+/// working copies gigantes; a busca difusa do editor não precisa de mais).
+const MAX_WC_FILES: usize = 20_000;
+
+/// Lista os arquivos de uma cópia de trabalho (recursivo) para o "Ir para
+/// arquivo" (Ctrl+Shift+N) do editor embutido. Retorna caminhos RELATIVOS à
+/// raiz, com `/`, ordenados. Ignora diretórios ocultos (`.svn`, `.git`,
+/// `.idea`…) — arquivos ocultos como `.classpath` aparecem — e não segue
+/// symlinks (evita ciclos). A caminhada roda em `spawn_blocking` para não
+/// travar o runtime.
+#[tauri::command]
+pub async fn list_wc_files(
+    path: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<String>, String> {
+    let (_, cfg) = config_snapshot(&state);
+    let abs = validate_local_path(&path, &cfg, "pasta da cópia de trabalho", false, true)?;
+    tokio::task::spawn_blocking(move || collect_wc_files(&abs))
+        .await
+        .map_err(|e| format!("falha ao listar os arquivos: {e}"))?
+}
+
+/// Caminhada iterativa (pilha própria, sem recursão) juntando os arquivos.
+/// Pastas ilegíveis são puladas em silêncio — listar o que der é mais útil
+/// para a paleta do que falhar tudo.
+fn collect_wc_files(root: &Path) -> Result<Vec<String>, String> {
+    let mut out: Vec<String> = Vec::new();
+    let mut stack = vec![root.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let Ok(kind) = entry.file_type() else {
+                continue;
+            };
+            if kind.is_dir() {
+                if !entry.file_name().to_string_lossy().starts_with('.') {
+                    stack.push(entry.path());
+                }
+            } else if kind.is_file() {
+                if let Ok(rel) = entry.path().strip_prefix(root) {
+                    out.push(rel.to_string_lossy().replace('\\', "/"));
+                    if out.len() >= MAX_WC_FILES {
+                        out.sort();
+                        return Ok(out);
+                    }
+                }
+            }
+        }
+    }
+    out.sort();
+    Ok(out)
+}
+
+#[cfg(test)]
+mod wc_files_tests {
+    use super::collect_wc_files;
+
+    #[test]
+    fn lista_relativo_ordenado_ignorando_pastas_ocultas() {
+        let dir = std::env::temp_dir().join(format!(
+            "subversa-teste-lista-wc-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        std::fs::create_dir_all(dir.join("sub/fundo")).unwrap();
+        std::fs::create_dir_all(dir.join(".svn/pristine")).unwrap();
+        std::fs::write(dir.join("a.txt"), "a").unwrap();
+        std::fs::write(dir.join("sub/fundo/b.java"), "b").unwrap();
+        std::fs::write(dir.join(".svn/pristine/x"), "x").unwrap();
+        // Arquivo oculto na raiz aparece (ex.: .classpath dos projetos Java).
+        std::fs::write(dir.join(".classpath"), "c").unwrap();
+
+        let files = collect_wc_files(&dir).unwrap();
+        std::fs::remove_dir_all(&dir).ok();
+
+        assert_eq!(files, vec![".classpath", "a.txt", "sub/fundo/b.java"]);
+    }
+}
+
 /// Detecta a codificação de um arquivo LOCAL só para exibição (badge na UI), sem
 /// carregar o conteúdo para edição. Retorna `"utf-8"`, `"iso-8859-1"`, `"binary"`
 /// (tem NUL) ou `"unknown"` (pasta, ilegível, grande demais ou caminho não-local —
