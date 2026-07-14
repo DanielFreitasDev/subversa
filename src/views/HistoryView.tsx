@@ -14,6 +14,13 @@ import type { LogEntry, WorkingCopy } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { NeedWorkingCopy } from "./_shared";
 
+// Ao buscar, varremos o histórico inteiro — não só a janela já carregada. O
+// `svn log --search` filtra por autor, mensagem e (com `-v`) caminhos, e imprime
+// apenas as revisões que casam; então mesmo varrendo tudo a saída fica pequena.
+// Usamos um teto de varredura alto em vez do `limit` de navegação, para que uma
+// palavra que só aparece num arquivo de 2023 apareça sem precisar "Carregar mais".
+const SEARCH_SCAN_LIMIT = 100000;
+
 function History_({ wc }: { wc: WorkingCopy }) {
   const [entries, setEntries] = useState<LogEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -31,7 +38,8 @@ function History_({ wc }: { wc: WorkingCopy }) {
       // Loga pela URL (assume HEAD:1) e não pelo caminho da WC (assume BASE:1):
       // numa WC de revisão mista, a BASE da raiz fica defasada após um commit de
       // arquivos fundos e esconderia do histórico a revisão recém-commitada.
-      const log = await api.getLog(wc.url, limit, query || undefined);
+      const scanLimit = query ? SEARCH_SCAN_LIMIT : limit;
+      const log = await api.getLog(wc.url, scanLimit, query || undefined);
       setEntries(log);
     } catch (e) {
       setError(String(e));
@@ -85,7 +93,7 @@ function History_({ wc }: { wc: WorkingCopy }) {
         </div>
       }
       listFooter={
-        entries.length >= limit && !loading ? (
+        !query && entries.length >= limit && !loading ? (
           <button
             onClick={() => setLimit((l) => l + 50)}
             className="w-full py-3 text-center text-[12px] text-brand hover:bg-panel-2"

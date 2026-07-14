@@ -5,7 +5,17 @@
  */
 
 import { useCallback, useEffect, useState } from "react";
-import { Copy, FileDiff, Folder, History, Pencil, ServerCrash, Undo2, Users } from "lucide-react";
+import {
+  ClipboardList,
+  Copy,
+  FileDiff,
+  Folder,
+  History,
+  Pencil,
+  ServerCrash,
+  Undo2,
+  Users,
+} from "lucide-react";
 
 import * as api from "@/lib/api";
 import { BlameModal, type BlameRequest } from "@/components/blame/BlameModal";
@@ -46,6 +56,34 @@ function copyRevision(revision: string) {
     ?.writeText(revision)
     .then(() => toast.success(`Revisão r${revision} copiada`))
     .catch(() => toast.error("Não consegui copiar a revisão"));
+}
+
+/** Copia `text` para a área de transferência, com toast de sucesso/erro. */
+function copyText(text: string, okMsg: string) {
+  navigator.clipboard
+    ?.writeText(text)
+    .then(() => toast.success(okMsg))
+    .catch(() => toast.error("Não consegui copiar"));
+}
+
+/** Menu de contexto de um arquivo do commit: copiar este caminho ou todos. */
+function pathMenuItems(path: LogPath, all: LogPath[]): MenuItem[] {
+  return [
+    {
+      id: "copy-path",
+      label: "Copiar caminho",
+      icon: <Copy className="size-4" />,
+      onSelect: () => copyText(path.path, "Caminho copiado"),
+    },
+    {
+      id: "copy-all-paths",
+      label: `Copiar todos os caminhos (${all.length})`,
+      icon: <ClipboardList className="size-4" />,
+      separatorBefore: true,
+      onSelect: () =>
+        copyText(all.map((p) => p.path).join("\n"), `${all.length} caminho(s) copiado(s)`),
+    },
+  ];
 }
 
 /** Itens do menu: copiar (sempre) e revert/editar quando houver handler. */
@@ -132,6 +170,13 @@ export function RevisionDetail({
   const [loading, setLoading] = useState(false);
   const [encoding, setEncoding] = useState<string | undefined>();
   const [blameReq, setBlameReq] = useState<BlameRequest | null>(null);
+  const pathCtx = useContextMenu();
+
+  const copyAllPaths = () =>
+    copyText(
+      entry.paths.map((p) => p.path).join("\n"),
+      `${entry.paths.length} caminho(s) copiado(s)`,
+    );
 
   // Volta para "revisão inteira" ao trocar de revisão.
   useEffect(() => setSel("all"), [entry.revision]);
@@ -267,16 +312,30 @@ export function RevisionDetail({
           <div className="text-[11px] font-semibold uppercase tracking-wider text-faint">
             {entry.paths.length} arquivo(s) alterado(s)
           </div>
-          <button
-            onClick={() => setSel("all")}
-            className={cn(
-              "flex items-center gap-1.5 rounded-md px-2 py-1 text-[11px] font-medium transition-colors",
-              sel === "all" ? "bg-brand/12 text-brand" : "text-faint hover:bg-panel-2 hover:text-ink",
+          <div className="flex items-center gap-1">
+            {entry.paths.length > 0 && (
+              <button
+                onClick={copyAllPaths}
+                title="Copiar o caminho de todos os arquivos"
+                className="flex items-center gap-1.5 rounded-md px-2 py-1 text-[11px] font-medium text-faint transition-colors hover:bg-panel-2 hover:text-ink"
+              >
+                <ClipboardList className="size-3.5" />
+                Copiar caminhos
+              </button>
             )}
-          >
-            <FileDiff className="size-3.5" />
-            Diff da revisão inteira
-          </button>
+            <button
+              onClick={() => setSel("all")}
+              className={cn(
+                "flex items-center gap-1.5 rounded-md px-2 py-1 text-[11px] font-medium transition-colors",
+                sel === "all"
+                  ? "bg-brand/12 text-brand"
+                  : "text-faint hover:bg-panel-2 hover:text-ink",
+              )}
+            >
+              <FileDiff className="size-3.5" />
+              Diff da revisão inteira
+            </button>
+          </div>
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-2">
@@ -287,6 +346,7 @@ export function RevisionDetail({
               <button
                 key={i}
                 onClick={() => setSel(p)}
+                onContextMenu={(e) => pathCtx.open(e, pathMenuItems(p, entry.paths))}
                 className={cn(
                   "flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left transition-colors",
                   active ? "bg-panel-3" : "hover:bg-panel-2",
@@ -331,6 +391,7 @@ export function RevisionDetail({
       </div>
 
       <BlameModal req={blameReq} onClose={() => setBlameReq(null)} />
+      <ContextMenu menu={pathCtx.menu} onClose={pathCtx.close} />
     </div>
   );
 }
