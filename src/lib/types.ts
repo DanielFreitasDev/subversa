@@ -222,6 +222,47 @@ export interface LogEntry {
   paths: LogPath[];
 }
 
+/**
+ * Caminho alterado numa revisão do gráfico do projeto (`svn log -v -g`).
+ * Igual a `LogPath`, mas com a revisão de cópia numérica (a topologia compara
+ * e ordena revisões).
+ */
+export interface GraphPath {
+  action: string;
+  path: string;
+  kind: string | null;
+  copyfromPath: string | null;
+  copyfromRev: number | null;
+}
+
+/** Revisão absorvida por um commit de merge (aninhada pelo `svn log -g`). */
+export interface MergedRevision {
+  revision: number;
+  /** Primeiro caminho alterado — classifica a origem quando a revisão está fora da janela. */
+  path: string | null;
+}
+
+/** Uma revisão do gráfico do projeto (`svn log -v -g`). */
+export interface GraphLogEntry {
+  revision: number;
+  author: string | null;
+  date: string | null;
+  message: string;
+  paths: GraphPath[];
+  /** Revisões que este commit trouxe por merge (vazio = commit comum). */
+  mergedRevisions: MergedRevision[];
+}
+
+/** Resultado do gráfico do projeto. */
+export interface ProjectGraph {
+  entries: GraphLogEntry[];
+  /**
+   * false = o servidor não expõe mergeinfo (`log -g` falhou com E200007):
+   * o grafo desenha lanes/forks, mas sem as setas de sync/reintegração.
+   */
+  mergeHistory: boolean;
+}
+
 /** Resultado da aba "Entrada": o que chega do servidor ao atualizar a WC. */
 export interface IncomingResult {
   /** Revisão atual da working copy (BASE). */

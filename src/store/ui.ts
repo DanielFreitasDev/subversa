@@ -7,6 +7,7 @@ export type ViewId =
   | "incoming"
   | "changes"
   | "history"
+  | "graph"
   | "branches"
   | "merge"
   | "repos"

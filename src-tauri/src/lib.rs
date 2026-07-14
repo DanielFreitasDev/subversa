@@ -60,6 +60,7 @@ pub fn run() {
             svn::commands::get_diff,
             svn::commands::diff_revision,
             svn::commands::get_log,
+            svn::commands::project_graph,
             svn::commands::incoming,
             svn::commands::list_dir,
             svn::commands::list_tree,

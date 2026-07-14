@@ -6,7 +6,10 @@
 
 use serde::Deserialize;
 
-use super::types::{BlameLine, ListEntry, LogEntry, LogPath, StatusEntry, StatusResult};
+use super::types::{
+    BlameLine, GraphLogEntry, GraphPath, ListEntry, LogEntry, LogPath, MergedRevision, StatusEntry,
+    StatusResult,
+};
 
 // ---------------------------------------------------------------------------
 // svn info --xml
@@ -233,10 +236,17 @@ struct LogXml {
 struct LogEntryXml {
     #[serde(rename = "@revision")]
     revision: String,
+    /// `true` quando a revisão foi *removida* por um merge reverso (só existe
+    /// nas entradas aninhadas do `svn log -g`).
+    #[serde(rename = "@reverse-merge")]
+    reverse_merge: Option<bool>,
     author: Option<String>,
     date: Option<String>,
     msg: Option<String>,
     paths: Option<LogPathsXml>,
+    /// Com `-g`, o svn aninha aqui as revisões absorvidas por este merge.
+    #[serde(rename = "logentry", default)]
+    children: Vec<LogEntryXml>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -287,6 +297,66 @@ pub fn parse_log(xml: &str) -> Result<Vec<LogEntry>, String> {
                 .unwrap_or_default(),
         })
         .collect())
+}
+
+// ---------------------------------------------------------------------------
+// svn log --xml -v -g (gráfico do projeto)
+// ---------------------------------------------------------------------------
+
+/// Parse do log verboso com merge-history (`-g`) para o gráfico do projeto.
+/// Revisões viram números (a topologia compara/ordena) e as entradas aninhadas
+/// pelo `-g` são achatadas em `merged_revisions`.
+pub fn parse_graph_log(xml: &str) -> Result<Vec<GraphLogEntry>, String> {
+    let parsed: LogXml =
+        quick_xml::de::from_str(xml).map_err(|e| format!("falha ao ler log do gráfico: {e}"))?;
+    Ok(parsed.entries.into_iter().map(graph_entry).collect())
+}
+
+fn graph_entry(e: LogEntryXml) -> GraphLogEntry {
+    let mut merged = Vec::new();
+    collect_merged(&e.children, &mut merged);
+    GraphLogEntry {
+        revision: e.revision.parse().unwrap_or(0),
+        author: e.author,
+        date: e.date,
+        message: e.msg.unwrap_or_default(),
+        paths: e
+            .paths
+            .map(|p| {
+                p.paths
+                    .into_iter()
+                    .map(|x| GraphPath {
+                        action: x.action,
+                        path: x.path.unwrap_or_default(),
+                        kind: x.kind,
+                        copyfrom_path: x.copyfrom_path,
+                        copyfrom_rev: x.copyfrom_rev.and_then(|s| s.parse().ok()),
+                    })
+                    .collect()
+            })
+            .unwrap_or_default(),
+        merged_revisions: merged,
+    }
+}
+
+/// Achata recursivamente as revisões aninhadas pelo `-g` (merge de merge
+/// incluído), pulando as marcadas como merge reverso (revisões *removidas*).
+fn collect_merged(children: &[LogEntryXml], out: &mut Vec<MergedRevision>) {
+    for c in children {
+        if c.reverse_merge != Some(true) {
+            if let Ok(revision) = c.revision.parse() {
+                out.push(MergedRevision {
+                    revision,
+                    path: c
+                        .paths
+                        .as_ref()
+                        .and_then(|p| p.paths.first())
+                        .and_then(|x| x.path.clone()),
+                });
+            }
+        }
+        collect_merged(&c.children, out);
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -591,5 +661,71 @@ mod tests {
         assert_eq!(parsed[0].revision.as_deref(), Some("5"));
         assert_eq!(parsed[0].content, "primeira");
         assert_eq!(parsed[1].content, "segunda");
+    }
+
+    #[test]
+    fn parses_graph_log_xml_with_nested_merges() {
+        // `svn log -v -g`: o commit 120 é uma reintegração que absorveu a 118
+        // (que por sua vez tinha absorvido a 115 num sync) e teve a 110
+        // removida por merge reverso — esta última não deve aparecer.
+        let xml = r#"
+            <log>
+              <logentry revision="120">
+                <author>daniel</author>
+                <date>2026-06-22T10:00:00.000Z</date>
+                <msg>Reintegra issue_1234</msg>
+                <paths>
+                  <path action="M" kind="dir">/trunk/PROJETOS/sna</path>
+                </paths>
+                <logentry reverse-merge="false" revision="118">
+                  <author>maria</author>
+                  <date>2026-06-21T10:00:00.000Z</date>
+                  <msg>Ajuste no branch</msg>
+                  <paths>
+                    <path action="M" kind="file">/branches/ISSUES 2026/06 - JUNHO/issue_1234/src/App.java</path>
+                  </paths>
+                  <logentry reverse-merge="false" revision="115">
+                    <msg>Sync do trunk</msg>
+                    <paths>
+                      <path action="M" kind="file">/trunk/PROJETOS/sna/src/App.java</path>
+                    </paths>
+                  </logentry>
+                </logentry>
+                <logentry reverse-merge="true" revision="110">
+                  <msg>Removida</msg>
+                </logentry>
+              </logentry>
+              <logentry revision="101">
+                <author>maria</author>
+                <date>2026-06-18T09:00:00.000Z</date>
+                <msg>Branch para issue_1234</msg>
+                <paths>
+                  <path action="A" kind="dir" copyfrom-path="/trunk/PROJETOS/sna" copyfrom-rev="100">/branches/ISSUES 2026/06 - JUNHO/issue_1234</path>
+                </paths>
+              </logentry>
+            </log>
+        "#;
+
+        let parsed = parse_graph_log(xml).unwrap();
+        assert_eq!(parsed.len(), 2);
+
+        let merge = &parsed[0];
+        assert_eq!(merge.revision, 120);
+        assert_eq!(merge.message, "Reintegra issue_1234");
+        let merged: Vec<u64> = merge.merged_revisions.iter().map(|m| m.revision).collect();
+        assert_eq!(merged, vec![118, 115]); // 110 é reverse-merge → fora
+        assert_eq!(
+            merge.merged_revisions[0].path.as_deref(),
+            Some("/branches/ISSUES 2026/06 - JUNHO/issue_1234/src/App.java")
+        );
+
+        let fork = &parsed[1];
+        assert_eq!(fork.revision, 101);
+        assert_eq!(fork.paths[0].copyfrom_rev, Some(100));
+        assert_eq!(
+            fork.paths[0].copyfrom_path.as_deref(),
+            Some("/trunk/PROJETOS/sna")
+        );
+        assert!(fork.merged_revisions.is_empty());
     }
 }

@@ -190,6 +190,46 @@ test.describe("tema escuro", () => {
     await expect(page).toHaveScreenshot("history.png");
   });
 
+  test("gráfico do projeto (grafo de revisões)", async ({ page }) => {
+    await gotoApp(page);
+    await openFirstWc(page);
+    await openTab(page, "Gráfico");
+
+    // Chips de lane (trunk + branches; o issue_1198 foi removido → riscado).
+    await expect(page.getByRole("button", { name: "trunk", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "issue_1234", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "issue_1198", exact: true })).toBeVisible();
+    // Pills de merge com a revisão absorvida (sync e reintegração).
+    await expect(page.getByText("sync ← r4816")).toBeVisible();
+    await expect(page.getByText("reintegração ← r4817")).toBeVisible();
+
+    await expect(page).toHaveScreenshot("graph.png");
+
+    // Clicar numa revisão abre o painel de detalhe (reuso do Histórico).
+    await page.getByText("Reintegra issue_1198 — hotfix de prazos").click();
+    await expect(page.getByText("Detalhes da revisão")).toBeVisible();
+    await expect(page.getByText("2 arquivo(s) alterado(s)")).toBeVisible();
+
+    await expect(page).toHaveScreenshot("graph-detail.png");
+  });
+
+  test("gráfico: focar uma lane esmaece as outras", async ({ page }) => {
+    await gotoApp(page);
+    await openFirstWc(page);
+    await openTab(page, "Gráfico");
+
+    await page.getByRole("button", { name: "issue_1234", exact: true }).click();
+    // As revisões de outras lanes ficam esmaecidas (opacity via classe).
+    const trunkRow = page
+      .locator("div")
+      .filter({ hasText: /^.*Corrige NPE no relatório consolidado.*$/ })
+      .filter({ has: page.locator("span", { hasText: "r4822" }) })
+      .first();
+    await expect(trunkRow).toBeVisible();
+
+    await expect(page).toHaveScreenshot("graph-focus.png");
+  });
+
   test("histórico: pastas alteradas têm ícone de pasta", async ({ page }) => {
     await gotoApp(page);
     await openFirstWc(page);
@@ -398,6 +438,17 @@ test.describe("tema claro", () => {
     await expect(page.getByText("issue_1255")).toBeVisible();
 
     await expect(page).toHaveScreenshot("branches-light.png");
+  });
+
+  test("gráfico (claro)", async ({ page }) => {
+    await gotoApp(page);
+    await openFirstWc(page);
+    await openTab(page, "Gráfico");
+
+    await expect(page.getByText("Reintegra issue_1198 — hotfix de prazos")).toBeVisible();
+    await expect(page.getByRole("button", { name: "issue_1234", exact: true })).toBeVisible();
+
+    await expect(page).toHaveScreenshot("graph-light.png");
   });
 });
 

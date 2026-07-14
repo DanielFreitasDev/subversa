@@ -18,6 +18,7 @@ export interface MockData {
   status: Record<string, unknown>;
   diff: string;
   log: Record<string, unknown>[];
+  graph: Record<string, unknown>[];
   branchList: Record<string, unknown>[];
   rootList: Record<string, unknown>[];
   treeList: Record<string, unknown>[];
@@ -151,6 +152,62 @@ export function buildFixtures(theme: Theme): MockData {
     { revision: "4790", author: "maria.silva", date: "2026-06-16T10:00:00.000Z",
       message: "Primeira versão do relatório consolidado",
       paths: [{ action: "A", path: "/sna/trunk/src/relatorio/Consolidado.java", kind: "file", copyfromPath: null, copyfromRev: null }] },
+  ];
+
+  // Gráfico do projeto (`project_graph`): história com 3 branches — issue_1198
+  // nasce, recebe commits, é reintegrado e removido (✕); issue_1234 segue vivo
+  // com um sync do trunk; issue_1255 acabou de nascer. Revisões numéricas.
+  const B1234 = "/branches/ISSUES 2026/06 - JUNHO/issue_1234";
+  const B1198 = "/branches/ISSUES 2026/06 - JUNHO/issue_1198";
+  const B1255 = "/branches/ISSUES 2026/06 - JUNHO/issue_1255";
+  const gp = (
+    action: string, path: string, kind = "file",
+    copyfromPath: string | null = null, copyfromRev: number | null = null,
+  ) => ({ action, path, kind, copyfromPath, copyfromRev });
+  const ge = (
+    revision: number, author: string, date: string, message: string,
+    paths: unknown[], mergedRevisions: unknown[] = [],
+  ) => ({ revision, author, date, message, paths, mergedRevisions });
+  const graph = [
+    ge(4822, "daniel.freitas", "2026-06-23T10:30:00.000Z", "Corrige NPE no relatório consolidado",
+      [gp("M", "/sna/src/relatorio/Consolidado.java")]),
+    ge(4821, "daniel.freitas", "2026-06-23T09:40:00.000Z", "Remove o branch issue_1198 (reintegrado)",
+      [gp("D", B1198, "dir")]),
+    ge(4820, "daniel.freitas", "2026-06-22T18:30:00.000Z", "Reintegra issue_1198 — hotfix de prazos",
+      [gp("M", "/sna", "dir"), gp("M", "/sna/src/prazo/Prazos.java")],
+      [{ revision: 4817, path: B1198 + "/src/prazo/Prazos.java" },
+       { revision: 4812, path: B1198 + "/src/prazo/Prazos.java" }]),
+    ge(4819, "maria.silva", "2026-06-22T16:10:00.000Z", "Tela de consulta por placa",
+      [gp("M", B1234 + "/src/consulta/ConsultaPlaca.java"),
+       gp("A", B1234 + "/src/consulta/ConsultaPlacaView.java")]),
+    ge(4818, "maria.silva", "2026-06-22T11:05:00.000Z", "Sync do trunk",
+      [gp("M", B1234, "dir"), gp("M", B1234 + "/pom.xml")],
+      [{ revision: 4816, path: "/sna/pom.xml" },
+       { revision: 4815, path: "/sna/db/migracao/V42__indice_autos.sql" }]),
+    ge(4817, "joao.souza", "2026-06-21T17:45:00.000Z", "Ajuste final do hotfix",
+      [gp("M", B1198 + "/src/prazo/Prazos.java")]),
+    ge(4816, "ana.costa", "2026-06-21T11:05:00.000Z", "Atualiza dependências do build",
+      [gp("M", "/sna/pom.xml")]),
+    ge(4815, "maria.silva", "2026-06-20T15:30:00.000Z", "Adiciona índice na tabela de autos",
+      [gp("A", "/sna/db/migracao/V42__indice_autos.sql")]),
+    ge(4814, "ana.costa", "2026-06-20T10:00:00.000Z", "Branch para issue_1255",
+      [gp("A", B1255, "dir", "/sna", 4813)]),
+    ge(4813, "daniel.freitas", "2026-06-19T18:20:00.000Z", "Ajusta validação de RENAVAM",
+      [gp("M", "/sna/src/veiculo/Renavam.java")]),
+    ge(4812, "joao.souza", "2026-06-19T14:00:00.000Z", "Hotfix: prazo de processos antigos",
+      [gp("M", B1198 + "/src/prazo/Prazos.java")]),
+    ge(4811, "maria.silva", "2026-06-19T10:40:00.000Z", "Persistência da consulta por placa",
+      [gp("M", B1234 + "/src/consulta/ConsultaPlacaDAO.java")]),
+    ge(4810, "joao.souza", "2026-06-19T09:00:00.000Z", "Branch para issue_1198",
+      [gp("A", B1198, "dir", "/sna", 4809)]),
+    ge(4809, "joao.souza", "2026-06-18T16:40:00.000Z", "Refatora camada de persistência",
+      [gp("M", "/sna/src/processo/ProcessoDAO.java"), gp("D", "/sna/src/legacy/OldDAO.java")]),
+    ge(4808, "maria.silva", "2026-06-18T09:12:00.000Z", "Branch para issue_1234",
+      [gp("A", "/branches/ISSUES 2026", "dir"),
+       gp("A", "/branches/ISSUES 2026/06 - JUNHO", "dir"),
+       gp("A", B1234, "dir", "/sna", 4807)]),
+    ge(4807, "maria.silva", "2026-06-16T10:00:00.000Z", "Primeira versão do relatório consolidado",
+      [gp("A", "/sna/src/relatorio/Consolidado.java")]),
   ];
 
   const branchList = [
@@ -303,7 +360,7 @@ export function buildFixtures(theme: Theme): MockData {
   ];
 
   return {
-    config, wcs, status, diff, log, branchList, rootList, treeList, contentSearch,
+    config, wcs, status, diff, log, graph, branchList, rootList, treeList, contentSearch,
     commandLog, conflictDetails, backups,
   };
 }
@@ -340,6 +397,8 @@ export function tauriInit(fx: MockData) {
         return fx.diff;
       case "get_log":
         return fx.log;
+      case "project_graph":
+        return { entries: fx.graph, mergeHistory: true };
       case "incoming":
         return { baseRevision: "4789", headRevision: "4820", entries: fx.log };
       case "list_dir": {

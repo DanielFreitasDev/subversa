@@ -1,6 +1,7 @@
 import {
   ArrowDownToLine,
   FileDiff,
+  GitGraph,
   GitMerge,
   GitBranch,
   History,
@@ -22,6 +23,7 @@ const TABS: { value: ViewId; label: string; icon: React.ReactNode }[] = [
   { value: "changes", label: "Alterações", icon: <FileDiff className="size-4" /> },
   { value: "incoming", label: "Entrada", icon: <Inbox className="size-4" /> },
   { value: "history", label: "Histórico", icon: <History className="size-4" /> },
+  { value: "graph", label: "Gráfico", icon: <GitGraph className="size-4" /> },
   { value: "branches", label: "Branches", icon: <GitBranch className="size-4" /> },
   { value: "merge", label: "Integração", icon: <GitMerge className="size-4" /> },
 ];

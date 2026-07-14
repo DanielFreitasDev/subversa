@@ -10,6 +10,7 @@ import {
   FolderOpen,
   FolderX,
   GitBranch,
+  GitGraph,
   GitMerge,
   History,
   LayoutDashboard,
@@ -169,6 +170,15 @@ export function CommandPalette() {
           icon: <History className="size-4" />,
           section: "Projeto atual",
           run: close(() => setView("history")),
+        },
+        {
+          id: "view-graph",
+          title: "Gráfico do projeto (trunk + branches)",
+          subtitle: wc.name,
+          keywords: "grafo árvore revisões merges",
+          icon: <GitGraph className="size-4" />,
+          section: "Projeto atual",
+          run: close(() => setView("graph")),
         },
         {
           id: "view-branches",

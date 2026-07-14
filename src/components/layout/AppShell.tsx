@@ -16,6 +16,7 @@ import { RepoOpDialog } from "@/components/dialogs/RepoOpDialog";
 import { BranchesView } from "@/views/BranchesView";
 import { ChangesView } from "@/views/ChangesView";
 import { CommandLogView } from "@/views/CommandLogView";
+import { GraphView } from "@/views/GraphView";
 import { HistoryView } from "@/views/HistoryView";
 import { IncomingView } from "@/views/IncomingView";
 import { MergeView } from "@/views/MergeView";
@@ -37,6 +38,8 @@ function ViewRouter() {
         return <ChangesView />;
       case "history":
         return <HistoryView />;
+      case "graph":
+        return <GraphView />;
       case "branches":
         return <BranchesView />;
       case "merge":

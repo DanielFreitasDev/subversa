@@ -537,6 +537,69 @@ pub async fn get_log(
     parser::parse_log(&xml)
 }
 
+/// Gráfico do projeto: `svn log -v -g --xml` na raiz do repositório, restrito
+/// aos caminhos do projeto (`paths` relativos à raiz — tipicamente o trunk e a
+/// pasta de branches). O `-g` aninha as revisões absorvidas por cada merge —
+/// é daí que o frontend desenha as setas de sync/reintegração; os forks de
+/// branch saem dos `copyfrom` do log verboso.
+///
+/// Servidores/repositórios antigos não expõem mergeinfo e rejeitam o `-g` com
+/// **E200007** ("Retrieval of mergeinfo unsupported"); nesse caso caímos para
+/// o mesmo log sem `-g` e sinalizamos `merge_history: false` — o grafo perde
+/// só as setas de merge, não a topologia.
+#[tauri::command]
+pub async fn project_graph(
+    root_url: String,
+    paths: Vec<String>,
+    limit: u32,
+    state: State<'_, AppState>,
+) -> Result<ProjectGraph, String> {
+    let (mode, cfg) = config_snapshot(&state);
+    validate_remote_url_for_read(&root_url, &cfg)?;
+    for p in &paths {
+        let clean = p.trim();
+        if clean.is_empty() || clean.starts_with('/') || clean.split('/').any(|s| s == "..") {
+            return Err(format!("caminho inválido para o gráfico: {p:?}"));
+        }
+    }
+    let limit_s = limit.clamp(1, 1000).to_string();
+    let build_args = |merge_history: bool| {
+        let mut args: Vec<String> = vec!["log".into(), "--xml".into(), "-v".into()];
+        if merge_history {
+            args.push("-g".into());
+        }
+        args.extend([
+            "-l".into(),
+            limit_s.clone(),
+            "--non-interactive".into(),
+            "--".into(),
+        ]);
+        args.push(peg_safe(&root_url));
+        args.extend(paths.iter().map(|p| peg_safe(p)));
+        args
+    };
+
+    let args = build_args(true);
+    let refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+    match run_checked_limited(&refs, None, mode, LIMIT_DEFAULT).await {
+        Ok(xml) => Ok(ProjectGraph {
+            entries: parser::parse_graph_log(&xml)?,
+            merge_history: true,
+        }),
+        // Código de erro, não texto (a mensagem vem traduzida do locale).
+        Err(err) if err.contains("E200007") => {
+            let args = build_args(false);
+            let refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+            let xml = run_checked_limited(&refs, None, mode, LIMIT_DEFAULT).await?;
+            Ok(ProjectGraph {
+                entries: parser::parse_graph_log(&xml)?,
+                merge_history: false,
+            })
+        }
+        Err(err) => Err(err),
+    }
+}
+
 /// Lê a revisão de `svn info` (BASE por padrão, ou na revisão `rev`).
 async fn info_revision(path: &str, rev: Option<&str>, mode: SshMode) -> Result<String, String> {
     let target = peg_safe(path);

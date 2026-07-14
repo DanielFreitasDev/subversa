@@ -59,9 +59,12 @@ isso o app preserva o idioma do `svn` e ainda assim entende as falhas.
 ### Comandos expostos
 
 *Leitura:* `detect_working_copies`, `get_info`, `get_status` (local ou `-u`),
-`get_diff`, `diff_revision`, `get_log` (com `--search`/intervalo), `incoming`,
-`list_dir`, `list_tree`, `search_content`, `cat_file`, `blame` (URL ou caminho
-local, com revisão opcional), `get_url_info`, `diff_urls`.
+`get_diff`, `diff_revision`, `get_log` (com `--search`/intervalo),
+`project_graph` (log `-v -g` da raiz restrito ao trunk + branches do projeto —
+alimenta a aba Gráfico; em servidor sem mergeinfo, E200007, refaz sem `-g` e
+sinaliza `mergeHistory: false`), `incoming`, `list_dir`, `list_tree`, `search_content`,
+`cat_file`, `blame` (URL ou caminho local, com revisão opcional),
+`get_url_info`, `diff_urls`.
 
 *Escrita:* `checkout`, `update`, `commit`, `svn_add`, `add_to_ignore`
 (svn:ignore da pasta), `revert`, `revert_hunk` (um trecho), `remove`,
@@ -188,10 +191,16 @@ src/
 │  │                FIXADO em 2.6.8 — 2.7+ usa WASM e quebra no WebView —,
 │  │                XML, sql-formatter), ir p/ linha e p/ arquivo, barra de
 │  │                status; CmEditor segue nos blocos inline de conflito
+│  ├─ graph/      → RevisionGraph: o "mapa de metrô" da aba Gráfico (SVG à
+│  │                mão — lanes, curvas de fork e setas de merge com
+│  │                gradiente); a topologia vem de lib/graph.ts (puro,
+│  │                testado): lanes por copyfrom, colunas por coloração
+│  │                gulosa de intervalos e escopo do projeto pela
+│  │                componente conexa do trunk (forks + mergeinfo do `-g`)
 │  ├─ repos/      → árvore, preview, busca do navegador de repositórios
 │  └─ dialogs/    → Checkout, CreateBranch, Conflict, RepoOp, …
-└─ views/         → Overview, Changes, History, Incoming, Branches, Merge,
-                    Repos, Backups, CommandLog, Settings, Setup
+└─ views/         → Overview, Changes, History, Graph, Incoming, Branches,
+                    Merge, Repos, Backups, CommandLog, Settings, Setup
 ```
 
 ### Fluxo de dados (exemplo: aba Alterações)

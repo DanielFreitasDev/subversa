@@ -19,6 +19,7 @@ import type {
   ListEntry,
   LogEntry,
   Prerequisites,
+  ProjectGraph,
   ShelfEntry,
   StashResult,
   StatusResult,
@@ -56,6 +57,15 @@ export const getLog = (
     search: search ?? null,
     revRange: revRange ?? null,
   });
+
+/**
+ * Gráfico do projeto: log verboso com merge-history (`-v -g`) na raiz do
+ * repositório, restrito aos `paths` relativos (trunk + pasta de branches).
+ * Em servidor sem suporte a mergeinfo, o backend refaz sem `-g` e devolve
+ * `mergeHistory: false`.
+ */
+export const projectGraph = (rootUrl: string, paths: string[], limit = 300) =>
+  invoke<ProjectGraph>("project_graph", { rootUrl, paths, limit });
 
 /** O que chega do servidor ao atualizar a WC (aba Entrada). */
 export const incoming = (path: string, limit?: number) =>

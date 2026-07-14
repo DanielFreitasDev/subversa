@@ -280,6 +280,53 @@ pub struct LogEntry {
     pub paths: Vec<LogPath>,
 }
 
+/// Caminho alterado numa revisão do gráfico do projeto (`svn log -v -g`).
+/// Igual a [`LogPath`], mas com a revisão de cópia numérica — a topologia do
+/// grafo compara e ordena revisões no frontend.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GraphPath {
+    pub action: String,
+    pub path: String,
+    pub kind: Option<String>,
+    pub copyfrom_path: Option<String>,
+    pub copyfrom_rev: Option<u64>,
+}
+
+/// Revisão absorvida por um commit de merge (aninhada pelo `svn log -g`).
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MergedRevision {
+    pub revision: u64,
+    /// Primeiro caminho alterado — classifica a linha de origem quando a
+    /// revisão está fora da janela carregada.
+    pub path: Option<String>,
+}
+
+/// Uma revisão do gráfico do projeto (`svn log -v -g`).
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GraphLogEntry {
+    pub revision: u64,
+    pub author: Option<String>,
+    pub date: Option<String>,
+    pub message: String,
+    pub paths: Vec<GraphPath>,
+    /// Revisões que este commit trouxe por merge (vazio = commit comum).
+    pub merged_revisions: Vec<MergedRevision>,
+}
+
+/// Resultado do gráfico do projeto.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectGraph {
+    pub entries: Vec<GraphLogEntry>,
+    /// false = o servidor não expõe mergeinfo (`log -g` falhou com E200007) e
+    /// o log veio sem `-g`: o grafo desenha lanes/forks, mas sem as setas de
+    /// sync/reintegração.
+    pub merge_history: bool,
+}
+
 /// Resultado da aba "Entrada": o que chega do servidor ao atualizar a WC.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
