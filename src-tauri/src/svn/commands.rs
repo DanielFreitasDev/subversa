@@ -1748,6 +1748,9 @@ async fn classic_merge(
         "--non-interactive".into(),
         "--accept".into(),
         "postpone".into(),
+        // WC de revisão mista é normal aqui (commits de arquivos fundos deixam a
+        // raiz pra trás); sem isto o svn recusa com E195020.
+        "--allow-mixed-revisions".into(),
     ];
     if dry_run {
         args.push("--dry-run".into());
@@ -1794,6 +1797,9 @@ pub async fn merge(
         "--non-interactive".into(),
         "--accept".into(),
         "postpone".into(),
+        // WC de revisão mista é comum no fluxo do time (raiz defasada após commit
+        // de arquivos fundos); sem isto o merge falha com E195020.
+        "--allow-mixed-revisions".into(),
     ];
     if dry_run {
         args.push("--dry-run".into());
@@ -1854,6 +1860,8 @@ pub async fn reverse_merge(
             "--non-interactive",
             "--accept",
             "postpone",
+            // WC de revisão mista não deve bloquear um revert local (E195020).
+            "--allow-mixed-revisions",
             "-r",
             &range,
             "--",
