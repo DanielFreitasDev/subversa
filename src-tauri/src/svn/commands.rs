@@ -1560,6 +1560,223 @@ pub async fn switch_wc(
     .await
 }
 
+/// Normaliza a `relative-url` do `svn info` (`^/branches/ISSUES%202026/...`) num
+/// caminho repo-relativo decodificado, com `/` inicial e sem `/` final.
+fn rel_from_relative_url(relative_url: &str) -> String {
+    let raw = relative_url.trim().trim_start_matches('^');
+    let d = dec(raw);
+    let d = d.trim_end_matches('/');
+    if d.starts_with('/') {
+        d.to_string()
+    } else {
+        format!("/{d}")
+    }
+}
+
+/// `anc` é ancestral de (ou igual a) `desc`, respeitando a fronteira de segmento
+/// (`/trunk` casa `/trunk/x`, mas não `/trunkX`).
+fn is_ancestor_or_equal(anc: &str, desc: &str) -> bool {
+    let anc = anc.trim_end_matches('/');
+    let desc = desc.trim_end_matches('/');
+    anc == desc || desc.starts_with(&format!("{anc}/"))
+}
+
+/// Dois caminhos repo-relativos na mesma linhagem: iguais ou um ancestral do
+/// outro. Usado para casar o copyfrom de uma branch com a linha principal.
+fn path_related(a: &str, b: &str) -> bool {
+    is_ancestor_or_equal(a, b) || is_ancestor_or_equal(b, a)
+}
+
+/// Entre os caminhos de uma revisão de criação de linha, escolhe o copyfrom da
+/// linha consultada: o caminho adicionado/substituído (`A`/`R`) com copyfrom que
+/// é ancestral (ou igual) de `url_rel`. Havendo mais de um, o mais específico
+/// (caminho mais longo). Devolve `(caminho de origem decodificado, revisão)`.
+fn pick_copyfrom(paths: &[LogPath], url_rel: &str) -> Option<(String, i64)> {
+    paths
+        .iter()
+        .filter(|p| matches!(p.action.as_str(), "A" | "R"))
+        .filter_map(|p| {
+            let cfp = p.copyfrom_path.as_ref()?;
+            let rev = p.copyfrom_rev.as_ref()?.parse::<i64>().ok()?;
+            is_ancestor_or_equal(&dec(&p.path), url_rel).then(|| (dec(cfp), rev, p.path.len()))
+        })
+        // O mais específico (caminho mais longo) é a raiz da própria linha.
+        .max_by_key(|(_, _, len)| *len)
+        .map(|(path, rev, _)| (path, rev))
+}
+
+/// `(caminho repo-relativo decodificado, URL absoluta)` de um alvo — URL remota
+/// ou caminho de working copy — via `svn info --xml`.
+async fn info_rel_url(target: &str, mode: SshMode) -> Result<(String, String), String> {
+    let t = peg_safe(target);
+    let xml = run_checked(
+        &["info", "--xml", "--non-interactive", "--", &t],
+        None,
+        mode,
+    )
+    .await?;
+    let entry = parser::parse_info(&xml)?
+        .entries
+        .into_iter()
+        .next()
+        .ok_or_else(|| "svn info não retornou dados".to_string())?;
+    let rel = entry
+        .relative_url
+        .map(|r| rel_from_relative_url(&r))
+        .ok_or_else(|| "svn info não trouxe a URL relativa".to_string())?;
+    Ok((rel, entry.url.unwrap_or_default()))
+}
+
+/// Origem por cópia de `url`: `(caminho de origem decodificado, revisão de
+/// origem P, revisão de criação C)`. `P` = a revisão da linha-mãe de onde a
+/// branch foi copiada (`copyfrom`); `C` = a revisão em que a branch nasceu (o
+/// commit da cópia). `None` quando a linha nasceu de import (sem copyfrom). O
+/// `-r 1:HEAD -l 1 --stop-on-copy` isola a revisão de criação (a mais antiga que
+/// ainda é da própria linha) — devolve UMA entrada, barato mesmo no trunk.
+async fn copy_origin(
+    url: &str,
+    url_rel: &str,
+    mode: SshMode,
+) -> Result<Option<(String, i64, i64)>, String> {
+    let t = peg_safe(url);
+    let xml = run_checked_limited(
+        &[
+            "log",
+            "--xml",
+            "-v",
+            "--stop-on-copy",
+            "-r",
+            "1:HEAD",
+            "-l",
+            "1",
+            "--non-interactive",
+            "--",
+            &t,
+        ],
+        None,
+        mode,
+        LIMIT_DEFAULT,
+    )
+    .await?;
+    let Some(entry) = parser::parse_log(&xml)?.into_iter().next() else {
+        return Ok(None);
+    };
+    let Ok(creation) = entry.revision.parse::<i64>() else {
+        return Ok(None);
+    };
+    Ok(pick_copyfrom(&entry.paths, url_rel).map(|(cfp, from)| (cfp, from, creation)))
+}
+
+/// Revisão-base na linha da ORIGEM para o merge clássico: o peg da esquerda em
+/// `svn merge ORIGEM@base ORIGEM@HEAD WC`. Descobre a bifurcação pela história de
+/// cópia (sem mergeinfo) e escolhe o peg que **existe** na própria origem:
+/// - **sync** (origem = linha principal, destino = branch): a base é o `copyfrom`
+///   P — a linha principal existe em P.
+/// - **reintegração** (origem = branch, destino = linha principal): a base é a
+///   criação C — `branch@C` existe e tem o conteúdo do fork (`≡ principal@P`),
+///   então `branch@P` (que não existiria) é evitado de propósito.
+async fn source_base_rev(source_url: &str, wc_path: &str, mode: SshMode) -> Result<i64, String> {
+    let (source_rel, _) = info_rel_url(source_url, mode).await?;
+    let (target_rel, target_url) = info_rel_url(wc_path, mode).await?;
+
+    // Reintegração: a origem é uma cópia da linha do destino → ancora na criação C.
+    if let Some((cfp, _from, creation)) = copy_origin(source_url, &source_rel, mode).await? {
+        if path_related(&cfp, &target_rel) {
+            return Ok(creation);
+        }
+    }
+    // Sync: o destino (a branch) é uma cópia da linha da origem → ancora no copyfrom P.
+    if let Some((cfp, from, _creation)) = copy_origin(&target_url, &target_rel, mode).await? {
+        if path_related(&cfp, &source_rel) {
+            return Ok(from);
+        }
+    }
+    Err(
+        "não encontrei a relação de cópia (branch ↔ linha principal) entre origem e destino."
+            .into(),
+    )
+}
+
+/// Merge clássico (pré-1.5, sem mergeinfo) para servidores/repos antigos que
+/// rejeitam o merge automático com **E200007**. Aplica o diff entre a origem no
+/// ponto de bifurcação e no HEAD com `--ignore-ancestry` — não consulta nem grava
+/// mergeinfo, então é imune ao E200007. Sem rastreamento de merge, repetir um
+/// sync pode reaplicar mudanças já trazidas; a nota no resultado avisa disso.
+async fn classic_merge(
+    path: &str,
+    source_url: &str,
+    dry_run: bool,
+    record_only: bool,
+    app: &AppHandle,
+    mode: SshMode,
+) -> Result<CommandOutput, String> {
+    // Falha na descoberta da base volta como CommandOutput de erro (não Err/reject):
+    // a aba Integração já trata `!success` mostrando stderr + dica, igual faria com
+    // o próprio E200007.
+    let base = match source_base_rev(source_url, path, mode).await {
+        Ok(b) => b,
+        Err(e) => {
+            return Ok(CommandOutput {
+                success: false,
+                code: None,
+                stdout: String::new(),
+                stderr: format!(
+                    "O servidor não suporta mergeinfo (E200007) e não consegui descobrir \
+                     automaticamente o ponto de bifurcação para o merge clássico: {e}"
+                ),
+                hint: Some(
+                    "Confirme que a working copy e a origem são a mesma linha (branch ↔ linha \
+                     principal). Se forem, o merge pode ser feito manualmente por um intervalo \
+                     de revisões (svn merge -r INÍCIO:HEAD ORIGEM)."
+                        .into(),
+                ),
+                command: "svn merge (compatibilidade, sem mergeinfo)".into(),
+            })
+        }
+    };
+    // Peg explícito (URL@REV): o último `@` é o separador de peg. Como no
+    // diff_urls, NÃO passa por peg_safe (que serve ao caso SEM peg); o `user@host`
+    // da URL é preservado porque o svn usa o último `@`. A base é sempre um peg que
+    // EXISTE na própria origem (ver source_base_rev), então nenhum lado atravessa a
+    // fronteira da cópia.
+    let left = format!("{source_url}@{base}");
+    let right = format!("{source_url}@HEAD");
+    let target = peg_safe(path);
+    let mut args: Vec<String> = vec![
+        "merge".into(),
+        "--ignore-ancestry".into(),
+        "--non-interactive".into(),
+        "--accept".into(),
+        "postpone".into(),
+    ];
+    if dry_run {
+        args.push("--dry-run".into());
+    }
+    if record_only {
+        args.push("--record-only".into());
+    }
+    args.push("--".into());
+    args.push(left);
+    args.push(right);
+    args.push(target);
+    let refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+    let mut out = run_streaming_op(app, "merge", &refs, None, mode).await?;
+    if out.success {
+        // Nota de compatibilidade no topo do stdout (a aba Integração exibe).
+        out.stdout = format!(
+            "ℹ Servidor SVN antigo (sem mergeinfo): usei merge clássico r{base}:HEAD, sem \
+             rastreamento de merge.\n\n{}",
+            out.stdout
+        );
+    }
+    Ok(out)
+}
+
+/// Merge da `source_url` na working copy `path`. Tenta primeiro o merge
+/// automático do svn (rastreado por mergeinfo); servidores/repos antigos o
+/// rejeitam com **E200007** e caímos para um merge clássico com intervalo
+/// explícito ([`classic_merge`]), que roda sem mergeinfo. Assim a mesma ação
+/// (sync e reintegração) funciona em servidor SVN novo ou antigo.
 #[tauri::command]
 pub async fn merge(
     path: String,
@@ -1588,7 +1805,16 @@ pub async fn merge(
     args.push(peg_safe(&source_url));
     args.push(peg_safe(&path));
     let refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-    run_streaming_op(&app, "merge", &refs, None, mode).await
+    let out = run_streaming_op(&app, "merge", &refs, None, mode).await?;
+
+    // Servidor/repo antigo sem mergeinfo (E200007): refaz como merge clássico.
+    // (Código de erro, não texto — a mensagem vem traduzida do locale.) O
+    // E200007 vem da fase de cálculo do merge, antes de tocar a WC — seguro
+    // refazer.
+    if !out.success && out.stderr.contains("E200007") {
+        return classic_merge(&path, &source_url, dry_run, record_only, &app, mode).await;
+    }
+    Ok(out)
 }
 
 /// Reverte as mudanças de uma revisão na cópia local (merge reverso). Não
@@ -1615,11 +1841,16 @@ pub async fn reverse_merge(
     let range = format!("{}:{}", n, n - 1);
     let url = peg_safe(&url);
     let path = peg_safe(&path);
+    // `--ignore-ancestry`: não consulta nem grava mergeinfo. É um revert local
+    // para revisão (o commit depois é a publicação), então não queremos escrita
+    // de mergeinfo reversa — e assim o comando também roda em servidor antigo,
+    // que rejeitaria a consulta de mergeinfo com E200007.
     run_streaming_op(
         &app,
         "merge",
         &[
             "merge",
+            "--ignore-ancestry",
             "--non-interactive",
             "--accept",
             "postpone",
@@ -2839,6 +3070,95 @@ mod tests {
         // Nome terminando em `@` ganha um SEGUNDO `@` — é o escape correto
         // (por isso a função não pode ser idempotente).
         assert_eq!(peg_safe("arquivo@"), "arquivo@@");
+    }
+
+    // --- Fallback de merge clássico (servidor sem mergeinfo, E200007) ---------
+
+    fn added(path: &str, copyfrom: Option<(&str, &str)>) -> LogPath {
+        LogPath {
+            action: "A".into(),
+            path: path.into(),
+            kind: Some("dir".into()),
+            copyfrom_path: copyfrom.map(|(p, _)| p.into()),
+            copyfrom_rev: copyfrom.map(|(_, r)| r.into()),
+        }
+    }
+
+    #[test]
+    fn ancestor_e_relacao_respeitam_fronteira_de_segmento() {
+        assert!(is_ancestor_or_equal("/trunk", "/trunk"));
+        assert!(is_ancestor_or_equal("/trunk", "/trunk/PROJETOS/getran"));
+        assert!(is_ancestor_or_equal("/trunk/", "/trunk/x")); // barra final tolerada
+                                                              // Não casa por prefixo textual sem fronteira de segmento.
+        assert!(!is_ancestor_or_equal("/trunk", "/trunkX"));
+        assert!(!is_ancestor_or_equal("/trunk/PROJETOS/getran", "/trunk"));
+
+        // path_related é simétrico (qualquer um pode ser o ancestral).
+        assert!(path_related(
+            "/trunk/PROJETOS/getran",
+            "/trunk/PROJETOS/getran"
+        ));
+        assert!(path_related("/trunk", "/trunk/PROJETOS/getran"));
+        assert!(path_related("/trunk/PROJETOS/getran", "/trunk"));
+        assert!(!path_related(
+            "/trunk/PROJETOS/getran",
+            "/trunk/PROJETOS/sna"
+        ));
+    }
+
+    #[test]
+    fn rel_from_relative_url_normaliza_e_decodifica() {
+        assert_eq!(
+            rel_from_relative_url("^/branches/ISSUES%202026/07%20-%20JULHO/x/getran"),
+            "/branches/ISSUES 2026/07 - JULHO/x/getran"
+        );
+        assert_eq!(
+            rel_from_relative_url("^/trunk/PROJETOS/getran/"),
+            "/trunk/PROJETOS/getran"
+        );
+        // Já sem `^` e com `/` inicial: idempotente o suficiente.
+        assert_eq!(rel_from_relative_url("/trunk"), "/trunk");
+    }
+
+    #[test]
+    fn pick_copyfrom_acha_a_bifurcacao_da_branch() {
+        // Criação típica com `--parents`: os diretórios intermediários entram
+        // como `A` puro (sem copyfrom); só a raiz da branch tem copyfrom.
+        let paths = vec![
+            added("/branches/ISSUES 2026/07 - JULHO", None),
+            added("/branches/ISSUES 2026/07 - JULHO/getran_21", None),
+            added(
+                "/branches/ISSUES 2026/07 - JULHO/getran_21/getran",
+                Some(("/trunk/PROJETOS/getran", "16382")),
+            ),
+        ];
+        let rel = "/branches/ISSUES 2026/07 - JULHO/getran_21/getran";
+        assert_eq!(
+            pick_copyfrom(&paths, rel),
+            Some(("/trunk/PROJETOS/getran".to_string(), 16382))
+        );
+    }
+
+    #[test]
+    fn pick_copyfrom_ignora_copyfrom_de_outra_linha() {
+        // Um copyfrom que não é ancestral do alvo (outro item movido na mesma
+        // revisão) não deve ser escolhido.
+        let paths = vec![
+            added(
+                "/trunk/PROJETOS/outro",
+                Some(("/trunk/PROJETOS/velho", "10")),
+            ),
+            added(
+                "/branches/x/getran",
+                Some(("/trunk/PROJETOS/getran", "100")),
+            ),
+        ];
+        assert_eq!(
+            pick_copyfrom(&paths, "/branches/x/getran"),
+            Some(("/trunk/PROJETOS/getran".to_string(), 100))
+        );
+        // Linha nascida de import (sem nenhum copyfrom) → None.
+        assert_eq!(pick_copyfrom(&[added("/trunk", None)], "/trunk"), None);
     }
 
     #[test]
