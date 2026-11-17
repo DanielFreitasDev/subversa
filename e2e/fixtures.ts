@@ -14,7 +14,7 @@ import { buildFixtures, tauriInit, type Theme } from "./mock/tauri";
 export const test = base.extend<{ theme: Theme }>({
   theme: ["dark", { option: true }],
   page: async ({ page, theme }, use) => {
-    // Data fixa = mesma "data atual" do CLAUDE.md, pra bater com as fixtures.
+    // Data fixa, a mesma usada nas fixtures do mock (rótulos relativos estáveis).
     await page.clock.setFixedTime(new Date("2026-06-23T12:00:00"));
     await page.addInitScript(tauriInit, buildFixtures(theme));
     await use(page);
