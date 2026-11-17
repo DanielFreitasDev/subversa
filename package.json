@@ -20,7 +20,8 @@
     "tauri": "tauri",
     "e2e": "playwright test",
     "e2e:update": "playwright test --update-snapshots=all",
-    "e2e:report": "playwright show-report"
+    "e2e:report": "playwright show-report",
+    "docs:screenshots": "playwright test -c playwright.readme.config.ts"
   },
   "dependencies": {
     "@codemirror/autocomplete": "^6.20.3",
