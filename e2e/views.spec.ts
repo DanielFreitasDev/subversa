@@ -261,6 +261,35 @@ test.describe("tema escuro", () => {
     await expect(page).toHaveScreenshot("history-arquivo-novo-por-copia.png");
   });
 
+  test("histórico: mensagem longa rola sem cobrir a barra do diff", async ({ page }) => {
+    await gotoApp(page);
+    await openFirstWc(page);
+    await openTab(page, "Histórico");
+
+    await page.getByText("Adiciona índice na tabela de autos").first().click();
+    const box = page.getByLabel("Mensagem do commit");
+    await expect(box).toBeVisible();
+
+    // O quadro da mensagem tem rolagem própria (conteúdo maior que a altura).
+    const { scrollH, clientH } = await box.evaluate((el) => ({
+      scrollH: el.scrollHeight,
+      clientH: el.clientHeight,
+    }));
+    expect(scrollH).toBeGreaterThan(clientH);
+
+    // A lista de arquivos continua visível e o quadro termina acima da barra do diff.
+    await expect(page.getByText("1 arquivo(s) alterado(s)")).toBeVisible();
+    const boxBottom = (await box.boundingBox())!.y + clientH;
+    const toolbarTop = (await page.getByText("Unificado").boundingBox())!.y;
+    expect(boxBottom).toBeLessThan(toolbarTop);
+
+    // Rolando até o fim, o final da mensagem aparece.
+    await box.evaluate((el) => el.scrollTo(0, el.scrollHeight));
+    await expect(page.getByText("Fim da mensagem do commit.")).toBeInViewport();
+
+    await expect(page).toHaveScreenshot("history-mensagem-longa.png");
+  });
+
   test("entrada (a receber do servidor)", async ({ page }) => {
     await gotoApp(page);
     await openFirstWc(page);

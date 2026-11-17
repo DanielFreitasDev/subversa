@@ -131,7 +131,12 @@ export function buildFixtures(theme: Theme): MockData {
       message: "Corrige cálculo de prazo no ProcessoService",
       paths: [{ action: "M", path: "/sna/trunk/src/processo/ProcessoService.java", kind: "file", copyfromPath: null, copyfromRev: null }] },
     { revision: "4815", author: "maria.silva", date: "2026-06-21T11:05:00.000Z",
-      message: "Adiciona índice na tabela de autos\n\nMelhora a consulta por placa.",
+      // Mensagem longa de propósito: o detalhe do Histórico precisa rolar a
+      // mensagem no próprio quadro, sem vazar por cima da barra do diff.
+      message: "Adiciona índice na tabela de autos\n\nMelhora a consulta por placa.\n\n" +
+        Array.from({ length: 24 }, (_, i) =>
+          `- Item ${i + 1}: detalhe da mudança que deixa a mensagem bem comprida.`).join("\n") +
+        "\n\nFim da mensagem do commit.",
       paths: [{ action: "A", path: "/sna/trunk/db/migracao/V42__indice_autos.sql", kind: "file", copyfromPath: null, copyfromRev: null }] },
     { revision: "4809", author: "joao.souza", date: "2026-06-19T16:40:00.000Z",
       message: "Refatora camada de persistência",

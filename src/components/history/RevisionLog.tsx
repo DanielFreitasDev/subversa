@@ -252,8 +252,8 @@ export function RevisionDetail({
   return (
     <div className="flex h-full flex-col">
       {/* Topo: cabeçalho, mensagem e arquivos clicáveis. */}
-      <div className="flex max-h-[45%] shrink-0 flex-col border-b border-line">
-        <div className="px-5 pt-4">
+      <div className="flex max-h-[45%] shrink-0 flex-col overflow-hidden border-b border-line">
+        <div className="flex min-h-0 shrink flex-col px-5 pt-4">
           <div className="flex items-start justify-between gap-3">
             <div className="flex min-w-0 items-center gap-3">
               <Avatar name={entry.author} size={38} />
@@ -303,9 +303,17 @@ export function RevisionDetail({
               </IconButton>
             </div>
           </div>
-          <p className="selectable mt-3 whitespace-pre-wrap text-[13px] leading-relaxed text-ink">
-            {entry.message || "(sem mensagem)"}
-          </p>
+          {/* Mensagem longa rola no próprio quadro (altura limitada) em vez de
+              vazar por cima da barra do diff; a lista de arquivos continua visível. */}
+          <div
+            className="mt-3 max-h-40 min-h-0 overflow-y-auto pr-1"
+            tabIndex={0}
+            aria-label="Mensagem do commit"
+          >
+            <p className="selectable whitespace-pre-wrap break-words text-[13px] leading-relaxed text-ink">
+              {entry.message || "(sem mensagem)"}
+            </p>
+          </div>
         </div>
 
         <div className="flex items-center justify-between gap-2 px-5 pb-2 pt-3">
