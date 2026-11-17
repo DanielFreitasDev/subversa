@@ -288,6 +288,35 @@ test.describe("tema escuro", () => {
     await expect(page.getByText("Fim da mensagem do commit.")).toBeInViewport();
 
     await expect(page).toHaveScreenshot("history-mensagem-longa.png");
+
+    // "Ver mensagem completa" abre o popup só com a mensagem.
+    await page.getByRole("button", { name: "Ver mensagem completa" }).click();
+    const dialog = page.getByRole("dialog", { name: "Mensagem da revisão r4815" });
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByText("Item 12: detalhe da mudança")).toBeVisible();
+    await expect(page).toHaveScreenshot("history-mensagem-popup.png");
+
+    // Fecha pelo botão "Fechar"…
+    await dialog.getByRole("button", { name: "Fechar", exact: true }).last().click();
+    await expect(dialog).toBeHidden();
+    // …clicando fora (no fundo escurecido)…
+    await page.getByRole("button", { name: "Ver mensagem completa" }).click();
+    await expect(dialog).toBeVisible();
+    await page.mouse.click(140, 600);
+    await expect(dialog).toBeHidden();
+    // …e com Esc.
+    await page.getByRole("button", { name: "Ver mensagem completa" }).click();
+    await expect(dialog).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(dialog).toBeHidden();
+  });
+
+  test("histórico: mensagem curta não mostra o botão de ver completa", async ({ page }) => {
+    await gotoApp(page);
+    await openFirstWc(page);
+    await openTab(page, "Histórico");
+    await expect(page.getByLabel("Mensagem do commit")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Ver mensagem completa" })).toHaveCount(0);
   });
 
   test("entrada (a receber do servidor)", async ({ page }) => {

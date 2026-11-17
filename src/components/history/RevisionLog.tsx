@@ -4,13 +4,15 @@
  * URL remota — para servir tanto a Histórico quanto o navegador de repositórios.
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ClipboardList,
   Copy,
   FileDiff,
   Folder,
   History,
+  Maximize2,
+  MessageSquareText,
   Pencil,
   ServerCrash,
   Undo2,
@@ -27,6 +29,7 @@ import { EncodingBadge } from "@/components/ui/EncodingBadge";
 import { ContextMenu, useContextMenu, type MenuItem } from "@/components/ui/ContextMenu";
 import { Empty } from "@/components/ui/Empty";
 import { Loading } from "@/components/ui/Spinner";
+import { Modal } from "@/components/ui/Modal";
 import { buildAddedFileDiff, type DiffFile } from "@/lib/diff";
 import type { LogEntry, LogPath } from "@/lib/types";
 import { toast } from "@/store/toast";
@@ -51,6 +54,22 @@ export interface RevisionActions {
 }
 
 /** Copia o número da revisão para a área de transferência. */
+/** `true` quando o conteúdo do elemento é mais alto que a área visível (tem
+ *  rolagem). Reavalia ao redimensionar e quando `dep` (o texto) muda. */
+function useOverflows(ref: React.RefObject<HTMLElement | null>, dep: unknown): boolean {
+  const [over, setOver] = useState(false);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const check = () => setOver(el.scrollHeight > el.clientHeight + 1);
+    check();
+    const ro = new ResizeObserver(check);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [ref, dep]);
+  return over;
+}
+
 function copyRevision(revision: string) {
   navigator.clipboard
     ?.writeText(revision)
@@ -170,6 +189,9 @@ export function RevisionDetail({
   const [loading, setLoading] = useState(false);
   const [encoding, setEncoding] = useState<string | undefined>();
   const [blameReq, setBlameReq] = useState<BlameRequest | null>(null);
+  const [msgOpen, setMsgOpen] = useState(false);
+  const msgRef = useRef<HTMLDivElement>(null);
+  const msgOverflows = useOverflows(msgRef, entry.message);
   const pathCtx = useContextMenu();
 
   const copyAllPaths = () =>
@@ -179,7 +201,12 @@ export function RevisionDetail({
     );
 
   // Volta para "revisão inteira" ao trocar de revisão.
-  useEffect(() => setSel("all"), [entry.revision]);
+  // Também fecha o popup da mensagem e volta a mensagem para o topo.
+  useEffect(() => {
+    setSel("all");
+    setMsgOpen(false);
+    msgRef.current?.scrollTo(0, 0);
+  }, [entry.revision]);
 
   const selectedPath = sel === "all" ? null : sel;
   const diffOn = selectedPath ? `${target.repoRoot}${selectedPath.path}` : target.diffTarget;
@@ -306,6 +333,7 @@ export function RevisionDetail({
           {/* Mensagem longa rola no próprio quadro (altura limitada) em vez de
               vazar por cima da barra do diff; a lista de arquivos continua visível. */}
           <div
+            ref={msgRef}
             className="mt-3 max-h-40 min-h-0 overflow-y-auto pr-1"
             tabIndex={0}
             aria-label="Mensagem do commit"
@@ -314,6 +342,15 @@ export function RevisionDetail({
               {entry.message || "(sem mensagem)"}
             </p>
           </div>
+          {msgOverflows && (
+            <button
+              onClick={() => setMsgOpen(true)}
+              className="mt-1.5 flex items-center gap-1.5 self-start rounded-md px-1.5 py-1 text-[11px] font-medium text-brand transition-colors hover:bg-brand/12"
+            >
+              <Maximize2 className="size-3.5" />
+              Ver mensagem completa
+            </button>
+          )}
         </div>
 
         <div className="flex items-center justify-between gap-2 px-5 pb-2 pt-3">
@@ -399,6 +436,32 @@ export function RevisionDetail({
       </div>
 
       <BlameModal req={blameReq} onClose={() => setBlameReq(null)} />
+      <Modal
+        open={msgOpen}
+        onClose={() => setMsgOpen(false)}
+        size="lg"
+        icon={<MessageSquareText className="size-4" />}
+        title={`Mensagem da revisão r${entry.revision}`}
+        description={`${entry.author} · ${formatAbsolute(entry.date)}`}
+        bodyClassName="p-0"
+        footer={
+          <>
+            <Button onClick={() => copyText(entry.message, "Mensagem copiada")}>
+              <Copy className="size-4" />
+              Copiar mensagem
+            </Button>
+            <Button variant="primary" onClick={() => setMsgOpen(false)}>
+              Fechar
+            </Button>
+          </>
+        }
+      >
+        <div className="max-h-[65vh] overflow-y-auto px-5 py-4">
+          <p className="selectable whitespace-pre-wrap break-words text-[13px] leading-relaxed text-ink">
+            {entry.message || "(sem mensagem)"}
+          </p>
+        </div>
+      </Modal>
       <ContextMenu menu={pathCtx.menu} onClose={pathCtx.close} />
     </div>
   );
